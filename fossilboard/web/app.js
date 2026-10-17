@@ -765,7 +765,7 @@ async function refreshSuggestions() {
     const list = $('#repo-suggest');
     const name = raw.replace(/^.*\//, '');
     const dirs = data.dirs || [];
-    list.innerHTML = dirs.slice(0, 12).map((d) => `<li data-path="${esc(d.path)}">
+    list.innerHTML = dirs.slice(0, 12).map((d) => `<li data-path="${esc(d.path)}" data-name="${esc(d.name)}">
       <span>${esc(name && d.name.startsWith(name) ? d.name.slice(name.length) : d.name)}</span>
       ${d.git ? '<span class="tag">git</span>' : ''}
       ${d.board ? '<span class="tag">доска</span>' : ''}
@@ -781,11 +781,15 @@ async function probeRepo() {
   try {
     const info = await api(`/api/repo?path=${encodeURIComponent(raw)}`);
     const bits = [];
-    if (!info.exists) bits.push('папки нет — будет создана');
-    else if (!info.is_git) bits.push('не git-репозиторий');
-    if (info.exists && info.is_dir && !info.has_board) bits.push('доски нет');
+    if (!info.exists) {
+      bits.push(repoState.create ? 'папки нет — будет создана' : 'папки нет — открыть нечего');
+    } else if (!info.is_git) {
+      bits.push(repoState.create ? 'не git-репозиторий — сделаем git init' : 'не git-репозиторий');
+    } else if (!info.has_board) {
+      bits.push(repoState.create ? 'доски нет — создадим' : 'доски нет');
+    }
     if (info.board_ok === false) bits.push(`доска сломана: ${info.board_error || ''}`);
-    if (!bits.length) bits.push('путь свободен');
+    if (!bits.length) bits.push(repoState.create ? 'путь свободен' : 'путь готов');
     status.textContent = bits.join(' · ');
     status.className = 'repo-status' + (info.board_ok === false ? ' err' : '');
   } catch (err) {
@@ -799,13 +803,20 @@ $('#repo-suggest').addEventListener('click', (e) => {
   const item = e.target.closest('[data-path]');
   if (!item) return;
   const input = $('#repo-new-path');
-  const tail = input.value.replace(/^.*\//, '');
-  input.value = item.dataset.path + (tail ? `/${tail}` : '');
+  // клик по подсказке ЗАМЕНЯЕТ последний сегмент набранного пути, а не дописывает
+  // его в конец: из «/home/dipsi/projects» + клик по «rezka-miner» не должен
+  // получаться «/home/dipsi/rezka-miner/projects»
+  const parent = input.value.replace(/[^/]*$/, '');
+  const trailing = input.value.trim().endsWith('/') ? '/' : '';
+  input.value = parent + item.dataset.name + trailing;
   refreshSuggestions();
   probeRepo();
 });
 
 $('#repo-form').addEventListener('submit', async (e) => {
+  // отмена — не наше дело: у <form method="dialog"> кнопка со value=cancel
+  // закрывает окно сама, перехватывать такой submit нельзя
+  if (e.submitter && e.submitter.value === 'cancel') return;
   const path = $('#repo-new-path').value.trim();
   if (!path) { e.preventDefault(); return; }
   e.preventDefault();

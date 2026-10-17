@@ -969,14 +969,22 @@ class TestRepoManager(TempRepoCase):
         missing = repolib.describe(self.tmp / "нет")
         self.assertFalse(missing["exists"])
 
-    def test_browse_lists_dirs_with_tags(self):
-        (self.tmp / "sub").mkdir()
-        (self.tmp / ".hidden").mkdir()
-        data = repolib.browse(str(self.tmp))
-        self.assertEqual(len(data), 1)
-        names = [d["name"] for d in data[0]["dirs"]]
-        self.assertIn("sub", names)
-        self.assertNotIn(".hidden", names, "скрытые каталоги не показываем")
+    def test_browse_skips_build_noise(self):
+        for noise in ("__pycache__", "node_modules", "build", "venv"):
+            (self.tmp / noise).mkdir()
+        (self.tmp / "k2c-proto").mkdir()
+        names = [d["name"] for d in repolib.browse(str(self.tmp))[0]["dirs"]]
+        self.assertIn("k2c-proto", names)
+        for noise in ("__pycache__", "node_modules", "build", "venv"):
+            self.assertNotIn(noise, names, f"служебный каталог {noise} в подсказке — мусор")
+
+    def test_suggest_entry_carries_name(self):
+        """Подсказка отдаёт имя каталога, чтобы заменять им последний сегмент."""
+        (self.tmp / "rezka-miner").mkdir()
+        dirs = repolib.browse(str(self.tmp))[0]["dirs"]
+        entry = next(d for d in dirs if d["name"] == "rezka-miner")
+        self.assertEqual(entry["name"], "rezka-miner")
+        self.assertEqual(entry["path"], str(self.tmp / "rezka-miner"))
 
 
 class TestRepoApi(TempRepoCase):
@@ -1083,6 +1091,25 @@ class TestWebMarkup(TempRepoCase):
         used = set(re.findall(r"\$\('#([a-zA-Z0-9_-]+)'\)", app))
         missing = sorted(i for i in used if f'id="{i}"' not in html)
         self.assertEqual(missing, [], f"app.js обращается к несуществующим элементам: {missing}")
+
+    def test_hidden_attribute_is_not_overridden_by_display(self):
+        """Поля, скрытые через hidden, должны реально исчезать.
+
+        display:flex у .repo-field перебивал атрибут hidden, и «префикс» с
+        «именем» оставались видимыми в режиме открытия репы.
+        """
+        css = (REPO_ROOT / "fossilboard" / "web" / "style.css").read_text(encoding="utf-8")
+        self.assertRegex(css, r"\[hidden\]\s*\{[^}]*display:\s*none\s*!important")
+        app = (REPO_ROOT / "fossilboard" / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("closest('.repo-field').hidden = !create", app)
+
+    def test_cancel_button_is_not_swallowed(self):
+        """«Отмена» закрывает диалог: submit с value=cancel перехватывать нельзя."""
+        app = (REPO_ROOT / "fossilboard" / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("e.submitter.value === 'cancel'", app)
+        handler = app.split("$('#repo-form').addEventListener('submit'")[1][:600]
+        self.assertLess(handler.index("return;"), handler.index("e.preventDefault()"),
+                        "проверка отмены должна идти до preventDefault")
 
     def test_no_remote_resources(self):
         """Доска работает офлайн: внешних загрузок в статике быть не должно."""

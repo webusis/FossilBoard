@@ -53,6 +53,10 @@
 
 * { box-sizing: border-box; }
 
+/* .repo-field имеет display:flex, который перебивает атрибут hidden —
+   из-за этого поля «префикс» и «имя» оставались видимыми в режиме «открыть репу» */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;

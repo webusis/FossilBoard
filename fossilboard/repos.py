@@ -87,6 +87,10 @@ def describe(path: Path) -> dict:
     return info
 
 
+NOISE_DIRS = {"__pycache__", "node_modules", "venv", "build", "dist", "target",
+              "vendor", "__snapshots__", ".mypy_cache", ".pytest_cache"}
+
+
 def browse(path: str | None = None) -> list[dict]:
     """Подкаталоги для подсказки при вводе пути руками."""
     raw = (path or "").strip()
@@ -100,7 +104,7 @@ def browse(path: str | None = None) -> list[dict]:
     out = []
     try:
         for child in sorted(base.iterdir(), key=lambda p: p.name.lower()):
-            if child.name.startswith("."):
+            if child.name.startswith(".") or child.name in NOISE_DIRS:
                 continue
             if child.is_dir():
                 out.append({"name": child.name, "path": str(child), "git": is_git_repo(child),
