@@ -8,7 +8,7 @@
 [![license](https://img.shields.io/badge/license-MIT-77216F?style=flat-square)](LICENSE)
 [![python](https://img.shields.io/badge/python-3.14-E95420?style=flat-square)](https://docs.python.org/3.14/)
 [![dependencies](https://img.shields.io/badge/dependencies-0-4C9A2A?style=flat-square)](#зачем-так)
-[![tests](https://img.shields.io/badge/tests-95%20passed-19B6EE?style=flat-square)](#тесты)
+[![tests](https://img.shields.io/badge/tests-99%20passed-19B6EE?style=flat-square)](#тесты)
 [![theme](https://img.shields.io/badge/theme-Yaru%20Dark-300A24?style=flat-square)](#оформление)
 
 </div>
@@ -125,8 +125,27 @@ cd FossilBoard
 ./board.py module rm "Движок"
 
 ./board.py init --id K2C --name "Kingdom-like" --repo ~/projects/k2c-proto
-./board.py projects · ./board.py json · ./board.py serve [--port 8770]
+./board.py projects              # список проектов
+./board.py json · ./board.py serve [--port 8770]
 ```
+
+### Как добавить проект
+
+```bash
+# 1. Создать доску с нуля: папка, git init, .board/board.json, регистрация
+./board.py init --id K2C --name "Kingdom-like" --repo ~/projects/k2c-proto
+
+# 2. Подключить существующую репу: доска создастся, если её ещё нет
+./board.py projects add K2C "Kingdom-like" --repo ~/projects/k2c-proto
+
+./board.py projects show K2C     # один проект в JSON
+./board.py projects rm K2C       # убрать из конфига (доска в репе остаётся)
+```
+
+`init` требует, чтобы доски ещё не было, и ругается, если она есть.
+`projects add` работает всегда: создаёт доску, если её нет, и просто
+регистрирует путь, если есть. То же самое доступно как
+`./board.py config add-project …`, если так привычнее.
 
 Коды выхода: `0` — успех, `1` — ошибка. Никакого декоративного вывода.
 
@@ -207,7 +226,7 @@ FossilBoard/
 │   ├── server.py             REST поверх http.server
 │   ├── cli.py                команды терминала
 │   └── web/                  index.html · app.js · style.css — без сборки
-├── tests/test_board.py       95 тестов на stdlib unittest
+├── tests/test_board.py       99 тестов на stdlib unittest
 ├── docs/                     скриншоты для README
 └── .board/                   данные этой репы (у других проектов — у них в своих)
     ├── board.json            источник правды
@@ -233,7 +252,7 @@ git -C ~/projects/k2c-proto show HEAD:.board/board.json > ~/projects/k2c-proto/.
 ## Тесты
 
 ```bash
-python3 -m unittest discover -s tests -v      # 95 тестов, ~32 с
+python3 -m unittest discover -s tests -v      # 99 тестов, ~36 с
 ```
 
 Покрыты: CRUD, запрет переиспользования ID, перемещение и прогресс саб-задач,

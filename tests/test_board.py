@@ -805,6 +805,63 @@ class TestCliConfig(TempRepoCase):
                 del os.environ["FOSSILBOARD_PORT"]
 
 
+    def test_serve_starts_with_several_projects(self):
+        """Серверу не нужен проект по умолчанию: он показывает их все."""
+        second = self.tmp / "second"
+        second.mkdir()
+        git(second, "init", "-q")
+        init_board(second, "SEC", "Второй проект")
+        # оба проекта должны быть в конфиге — иначе «единственный очевидный»
+        # выбор скроет проверку
+        self.run_cfg("config", "add-project", "FB", "FossilBoard", "--repo", str(self.repo))
+        self.run_cfg("config", "add-project", "SEC", "Второй проект", "--repo", str(second))
+
+        from fossilboard import cli as cli_mod
+        from fossilboard import server as server_mod
+        started = {}
+
+        def fake_serve(repo=None, host=None, port=None, cfg=None):
+            started.update(repo=repo, cfg=cfg)
+            return 0
+
+        with mock.patch.dict(os.environ, self.env), \
+                mock.patch.object(server_mod, "serve", fake_serve):
+            code = cli_mod.main(["serve"])
+        self.assertEqual(code, 0, "serve не должен падать из-за нескольких проектов")
+        self.assertIsNone(started.get("repo"),
+                          "без явного выбора сервер работает со всеми проектами")
+        self.assertEqual(len(started["cfg"]["projects"]), 2)
+
+    def test_projects_add_creates_board_when_missing(self):
+        """projects add — человеческий вход: сам создаёт доску, если её нет."""
+        repo = self.tmp / "demo"
+        repo.mkdir()
+        git(repo, "init", "-q")
+        proc = self.run_cfg("projects", "add", "DEMO", "Демо", "--repo", str(repo))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("доска будет создана", proc.stdout)
+        board = load_board(repo)
+        self.assertEqual(board["project"]["id"], "DEMO")
+        self.assertEqual(board["project"]["repo_path"], str(repo.resolve()))
+        self.assertIn("DEMO", self.run_cfg("projects").stdout)
+
+    def test_projects_add_keeps_existing_board(self):
+        self.run_cfg("projects", "add", "FB", "Переименованное", "--repo", str(self.repo))
+        self.assertEqual(load_board(self.repo)["tasks"], [], "доска не пересоздаётся")
+        listed = self.run_cfg("projects").stdout
+        self.assertIn("FB", listed)
+        self.assertIn("Переименованное", listed)
+
+    def test_projects_rm_and_show(self):
+        self.run_cfg("projects", "add", "DEMO", "Демо", "--repo", str(self.tmp))
+        shown = self.run_cfg("projects", "show", "DEMO")
+        self.assertEqual(shown.returncode, 0, shown.stderr)
+        self.assertIn("repo_path", shown.stdout)
+        self.assertEqual(self.run_cfg("projects", "rm", "DEMO").returncode, 0)
+        self.assertEqual(self.run_cfg("projects", "rm", "DEMO").returncode, 1)
+        self.assertEqual(self.run_cfg("projects", "show", "DEMO").returncode, 1)
+
+
 class TestConfigLookup(TempRepoCase):
     """Где доска ищет конфиг: env → ./config.json → ~/.config → умолчания."""
 
@@ -1206,31 +1263,6 @@ class TestWebMarkup(TempRepoCase):
         html = (web / "index.html").read_text(encoding="utf-8")
         self.assertNotIn("cdn.", html)
         self.assertNotIn("fonts.googleapis", html)
-
-
-def test_serve_starts_with_several_projects(self):
-        """Серверу не нужен проект по умолчанию: он показывает их все."""
-        second = self.tmp / "second"
-        second.mkdir()
-        git(second, "init", "-q")
-        init_board(second, "SEC", "Второй проект")
-        self.run_cfg("config", "add-project", "SEC", "Второй проект", "--repo", str(second))
-
-        from fossilboard import cli as cli_mod
-        from fossilboard import server as server_mod
-        started = {}
-
-        def fake_serve(repo=None, host=None, port=None, cfg=None):
-            started.update(repo=repo, cfg=cfg)
-            return 0
-
-        with mock.patch.dict(os.environ, self.env), \
-                mock.patch.object(server_mod, "serve", fake_serve):
-            code = cli_mod.main(["serve"])
-        self.assertEqual(code, 0, "serve не должен падать из-за нескольких проектов")
-        self.assertIsNone(started.get("repo"),
-                          "без явного выбора сервер работает со всеми проектами")
-        self.assertEqual(len(started["cfg"]["projects"]), 2)
 
 
 if __name__ == "__main__":

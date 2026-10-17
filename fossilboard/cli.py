@@ -155,6 +155,39 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 def cmd_projects(args: argparse.Namespace) -> int:
     cfg = get_config()
+    action = getattr(args, "projects_cmd", "list")
+    if action == "add":
+        if not (args.id and args.repo):
+            return die("нужно: board.py projects add FB \"Имя\" --repo /путь/к/репе")
+        repo_path = Path(args.repo).expanduser().resolve()
+        board = board_path(repo_path)
+        if not board.is_file():
+            print(f"внимание: в {repo_path} нет доски — доска будет создана")
+        proj = cfgmod.upsert_project(cfg, args.id, args.name or args.id, str(repo_path))
+        if not board.is_file():
+            data = init_board(repo_path, proj["id"], proj["name"], task_prefix=proj["id"])
+            # путь в доске должен совпадать с тем, что в конфиге
+            data["project"]["repo_path"] = str(repo_path)
+            save_board(repo_path, data)
+        cfgmod.save(cfg)
+        print(f"{proj['id']}  {proj['name']}  →  {proj['repo_path']}")
+        print(f"конфиг: {cfg['_path']}")
+        return EXIT_OK
+    if action == "rm":
+        if not args.id:
+            return die("нужен id: board.py projects rm FB")
+        if not cfgmod.remove_project(cfg, args.id):
+            return die(f"проект {args.id} в конфиге не найден")
+        cfgmod.save(cfg)
+        print(f"проект {args.id} убран из конфига (доска в репе не тронута)")
+        return EXIT_OK
+    if action == "show":
+        proj = cfgmod.project(cfg, args.id)
+        if proj is None:
+            return die(f"проект {args.id} не найден")
+        print(json.dumps(proj, indent=2, sort_keys=True, ensure_ascii=False))
+        return EXIT_OK
+
     if not cfg["projects"]:
         print("в конфиге нет проектов. Создать доску:  "
               "board.py init --id FB --name \"FossilBoard\" --repo <путь>")
@@ -478,7 +511,19 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_init)
 
     s = sub.add_parser("projects", help="проекты из конфига")
-    s.set_defaults(func=cmd_projects)
+    psub = s.add_subparsers(dest="projects_cmd")
+    ps = psub.add_parser("add", help="добавить проект (и доску, если её нет)")
+    ps.add_argument("id", help="префикс карточек, напр. FB")
+    ps.add_argument("name", nargs="?", help="название проекта")
+    ps.add_argument("--repo", required=True, help="путь к репозиторию")
+    ps.set_defaults(func=cmd_projects, projects_cmd="add")
+    ps = psub.add_parser("rm", help="убрать проект из конфига")
+    ps.add_argument("id")
+    ps.set_defaults(func=cmd_projects, projects_cmd="rm")
+    ps = psub.add_parser("show", help="показать проект в виде JSON")
+    ps.add_argument("id")
+    ps.set_defaults(func=cmd_projects, projects_cmd="show")
+    s.set_defaults(func=cmd_projects, projects_cmd="list")
 
     s = sub.add_parser("config", help="конфиг: пути, проекты, порт")
     csub = s.add_subparsers(dest="config_cmd")
