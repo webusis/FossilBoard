@@ -92,15 +92,22 @@ NOISE_DIRS = {"__pycache__", "node_modules", "venv", "build", "dist", "target",
 
 
 def browse(path: str | None = None) -> list[dict]:
-    """Подкаталоги для подсказки при вводе пути руками."""
+    """Содержимое каталога для подсказки при вводе пути руками.
+
+    Показываем то, что человек видит в файловом менеджерере: если набранный
+    путь существует — его содержимое, если нет — содержимое родителя.
+    Отдельным пунктом идёт «вверх», чтобы можно было подняться выше.
+    """
     raw = (path or "").strip()
-    base = Path(str(Path.home()) + raw[1:]) if raw.startswith("~") else Path(raw or Path.home())
-    if not base.is_absolute():
-        base = Path.home()
-    if base.is_file():
-        base = base.parent
-    if not base.is_dir():
-        base = base.parent if base.parent.is_dir() else Path.home()
+    try:
+        wanted = expand(raw)
+    except RepoError:
+        wanted = Path.home()
+    if wanted.is_file():
+        wanted = wanted.parent
+    if not wanted.is_dir():
+        wanted = wanted.parent if wanted.parent.is_dir() else Path.home()
+    base = wanted
     out = []
     try:
         for child in sorted(base.iterdir(), key=lambda p: p.name.lower()):
@@ -111,7 +118,7 @@ def browse(path: str | None = None) -> list[dict]:
                             "board": board_path(child).is_file()})
     except OSError as exc:
         raise RepoError(f"не читается {base}: {exc}") from exc
-    return [{"parent": str(base), "dirs": out[:MAX_SUBMIT_PROJECTS]}]
+    return [{"parent": str(base.parent), "self": str(base), "dirs": out[:MAX_SUBMIT_PROJECTS]}]
 
 
 def attach(cfg: dict, path_str: str, project_id: str | None = None,

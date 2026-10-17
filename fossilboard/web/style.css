@@ -286,6 +286,8 @@ pre.diff {
 }
 .repo-suggest li { padding: 4px 8px; font-size: 12px; cursor: pointer; display: flex; gap: 6px; align-items: center; }
 .repo-suggest li:hover { background: var(--yaru-check-bg-color); }
+.repo-suggest li.up { color: var(--yaru-link-color); border-bottom: 1px solid #262626; }
+.repo-suggest li.up .tag { margin-left: auto; }
 .repo-suggest .tag { color: var(--ink-dim); font-family: var(--mono); font-size: 11px; }
 
 /* ---------------- модалка/тост ---------------- */

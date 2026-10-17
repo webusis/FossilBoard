@@ -759,18 +759,26 @@ async function openRepoDialog(create) {
 
 async function refreshSuggestions() {
   const raw = $('#repo-new-path').value.trim();
-  const parent = raw.replace(/[^/]*$/, '') || '';
   try {
-    const [data] = await api(`/api/browse?path=${encodeURIComponent(parent)}`);
+    // сервер сам решает, что показать: содержимое набранного каталога,
+    // если он существует, иначе содержимое его родителя
+    const [data] = await api(`/api/browse?path=${encodeURIComponent(raw)}`);
     const list = $('#repo-suggest');
-    const name = raw.replace(/^.*\//, '');
+    const typed = raw.replace(/^.*\//, '');
     const dirs = data.dirs || [];
-    list.innerHTML = dirs.slice(0, 12).map((d) => `<li data-path="${esc(d.path)}" data-name="${esc(d.name)}">
-      <span>${esc(name && d.name.startsWith(name) ? d.name.slice(name.length) : d.name)}</span>
+    // сперва то, что начинается с набранного, остальное — после
+    const starts = dirs.filter((d) => typed && d.name.toLowerCase().startsWith(typed.toLowerCase()));
+    const rest = dirs.filter((d) => !starts.includes(d));
+    const up = data.parent ? `<li class="up" data-up="${esc(data.parent)}">
+        <span>↰ вверх</span><span class="tag">${esc(data.parent)}</span></li>` : '';
+    const row = (d) => `<li data-path="${esc(d.path)}" data-name="${esc(d.name)}">
+      <span>${esc(typed && d.name.toLowerCase().startsWith(typed.toLowerCase())
+        ? d.name.slice(typed.length) : d.name)}</span>
       ${d.git ? '<span class="tag">git</span>' : ''}
       ${d.board ? '<span class="tag">доска</span>' : ''}
-    </li>`).join('');
-    list.hidden = dirs.length === 0;
+    </li>`;
+    list.innerHTML = up + [...starts, ...rest].slice(0, 12).map(row).join('');
+    list.hidden = dirs.length === 0 && !data.parent;
   } catch { /* подсказка не критична */ }
 }
 
@@ -800,15 +808,32 @@ async function probeRepo() {
 
 $('#repo-new-path').addEventListener('input', () => { refreshSuggestions(); probeRepo(); });
 $('#repo-suggest').addEventListener('click', (e) => {
-  const item = e.target.closest('[data-path]');
+  const item = e.target.closest('[data-path],[data-up]');
   if (!item) return;
   const input = $('#repo-new-path');
-  // клик по подсказке ЗАМЕНЯЕТ последний сегмент набранного пути, а не дописывает
+
+  // вверх: родительский каталог, с завершающим слэшем, чтобы сразу
+  // показать его содержимое
+  if (item.dataset.up) {
+    input.value = item.dataset.up.replace(/\/+$/, '') + '/';
+    refreshSuggestions();
+    probeRepo();
+    return;
+  }
+
+  // клик по каталогу ЗАМЕНЯЕТ последний сегмент набранного пути, а не дописывает
   // его в конец: из «/home/dipsi/projects» + клик по «rezka-miner» не должен
   // получаться «/home/dipsi/rezka-miner/projects»
-  const parent = input.value.replace(/[^/]*$/, '');
-  const trailing = input.value.trim().endsWith('/') ? '/' : '';
-  input.value = parent + item.dataset.name + trailing;
+  const cur = input.value.trim();
+  if (!cur) {
+    // поле пустое: берём абсолютный путь целиком, иначе получилось бы
+    // относительное имя вроде «rezka-miner», которое сервер не примет
+    input.value = item.dataset.path.replace(/\/+$/, '') + '/';
+  } else {
+    const parent = cur.replace(/[^/]*$/, '');
+    const trailing = cur.endsWith('/') ? '/' : '';
+    input.value = parent + item.dataset.name + trailing;
+  }
   refreshSuggestions();
   probeRepo();
 });

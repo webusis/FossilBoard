@@ -978,6 +978,33 @@ class TestRepoManager(TempRepoCase):
         for noise in ("__pycache__", "node_modules", "build", "venv"):
             self.assertNotIn(noise, names, f"служебный каталог {noise} в подсказке — мусор")
 
+    def test_browse_shows_contents_of_the_typed_directory(self):
+        """Подсказки — это содержимое набранного каталога, как в файловом менеджерере."""
+        inside = self.tmp / "games"
+        inside.mkdir()
+        (inside / "k2c").mkdir()
+        (self.tmp / "other").mkdir()
+
+        data = repolib.browse(str(inside))[0]
+        self.assertEqual([d["name"] for d in data["dirs"]], ["k2c"])
+        self.assertEqual(data["self"], str(inside), "нужно знать, где мы находимся")
+        self.assertEqual(data["parent"], str(self.tmp), "и куда можно подняться")
+
+    def test_browse_falls_back_to_parent_for_missing_path(self):
+        inside = self.tmp / "games"
+        inside.mkdir()
+        (inside / "k2c").mkdir()
+        missing = self.tmp / "games" / "k2c-pro"
+        data = repolib.browse(str(missing))[0]
+        self.assertEqual(data["self"], str(inside))
+        self.assertIn("k2c", [d["name"] for d in data["dirs"]])
+
+    def test_browse_keeps_root_sane(self):
+        """От «/» не уходим в бесконечность: родитель остаётся корнем."""
+        data = repolib.browse("/")[0]
+        self.assertEqual(data["parent"], "/")
+        self.assertEqual(data["self"], "/")
+
     def test_suggest_entry_carries_name(self):
         """Подсказка отдаёт имя каталога, чтобы заменять им последний сегмент."""
         (self.tmp / "rezka-miner").mkdir()

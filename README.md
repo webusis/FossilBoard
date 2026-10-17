@@ -8,7 +8,7 @@
 [![license](https://img.shields.io/badge/license-MIT-77216F?style=flat-square)](LICENSE)
 [![python](https://img.shields.io/badge/python-3.14-E95420?style=flat-square)](https://docs.python.org/3.14/)
 [![dependencies](https://img.shields.io/badge/dependencies-0-4C9A2A?style=flat-square)](#зачем-так)
-[![tests](https://img.shields.io/badge/tests-87%20passed-19B6EE?style=flat-square)](#тесты)
+[![tests](https://img.shields.io/badge/tests-90%20passed-19B6EE?style=flat-square)](#тесты)
 [![theme](https://img.shields.io/badge/theme-Yaru%20Dark-300A24?style=flat-square)](#оформление)
 
 </div>
@@ -53,11 +53,16 @@ cd FossilBoard
 - **📂** — открыть существующую репу: путь руками, доска только зарегистрирует
   его в конфиге и ничего не тронет.
 
-Пока печатаете путь, снизу показываются подходящие каталоги с метками `git` и
-`доска` (служебные вроде `__pycache__` и `node_modules` не мешают), а под полем
-— что с этим путём: «папки нет — будет создана», «не git-репозиторий», «доски
-нет». Клик по подсказке заменяет последний набранный сегмент: было
-`/home/dipsi/projects` + клик по `rezka-miner` → `/home/dipsi/rezka-miner`.
+Пока печатаете путь, снизу показывается содержимое того каталога, который вы
+набираете (если его нет — его родителя), служебные папки вроде `__pycache__`
+и `node_modules` не мешают, а у каждой репы есть метки `git` и `доска`. Первой
+строкой идёт **«↰ вверх»** с родительским каталогом — подняться выше можно
+одним кликом.
+
+Правила кликов: по каталогу **заменяется** последний набранный сегмент
+(`/home/dipsi/projects` + клик по `rezka-miner` → `/home/dipsi/rezka-miner`),
+а при пустом поле подставляется абсолютный путь целиком. Под полем — что с этим
+путём: «папки нет — будет создана», «не git-репозиторий», «доски нет».
 `Ctrl/Cmd+O` открывает диалог сразу.
 
 Ограничения намеренные: путь должен быть абсолютным (`~` разворачивается),
@@ -201,7 +206,7 @@ FossilBoard/
 │   ├── server.py             REST поверх http.server
 │   ├── cli.py                команды терминала
 │   └── web/                  index.html · app.js · style.css — без сборки
-├── tests/test_board.py       87 тестов на stdlib unittest
+├── tests/test_board.py       90 тестов на stdlib unittest
 ├── docs/                     скриншоты для README
 └── .board/                   данные этой репы (у других проектов — у них в своих)
     ├── board.json            источник правды
@@ -227,7 +232,7 @@ git -C ~/projects/k2c-proto show HEAD:.board/board.json > ~/projects/k2c-proto/.
 ## Тесты
 
 ```bash
-python3 -m unittest discover -s tests -v      # 87 тестов, ~30 с
+python3 -m unittest discover -s tests -v      # 90 тестов, ~30 с
 ```
 
 Покрыты: CRUD, запрет переиспользования ID, перемещение и прогресс саб-задач,
