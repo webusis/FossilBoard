@@ -1,0 +1,286 @@
+/* FossilBoard — Yaru Dark.
+ *
+ * Значения переменных вычислены из исходников темы (см. CREDITS.md):
+ *   common/yaru-colors-defs.scss        — имена переменных
+ *   gtk/src/default/gtk-4.0/_colors.scss — значения для $variant == 'dark'
+ *   gtk/src/default/gtk-4.0/_palette.scss, gnome-shell/.../_yaru-palette.scss — базовая палитра
+ * SCSS-функции lighten()/darken()/mix() для тёмной ветки дают:
+ *   bg #2C2C2C, fg #F7F7F7, borders darken(bg,10%) #121212,
+ *   accent #E95420, accent-active lighten(orange,5%) #EB6637,
+ *   accent-focused darken(orange,7%) #D14515, switch lighten(inkstone,10%) #565656,
+ *   check lighten(bg,2%) #313131, base lighten(jet,6%) #272727.
+ * Ничего не грузится из сети: только системный шрифт.
+ */
+
+:root {
+  /* — переменные Yaru Dark (из исходников темы) — */
+  --yaru-bg-color: #2C2C2C;
+  --yaru-base-color: #272727;
+  --yaru-fg-color: #F7F7F7;
+  --yaru-light-bg-color: #FAFAFA;
+  --yaru-dark-bg-color: #F2F2F2;
+  --yaru-accent-color: #E95420;
+  --yaru-accent-bg-color: #E95420;
+  --yaru-accent-active-color: #EB6637;
+  --yaru-accent-focused-color: #D14515;
+  --yaru-accent-on-color: #FFFFFF;
+  --yaru-border-color: #121212;
+  --yaru-disabled-bg-color: #CECECE;      /* mix(bg, fg, 80%) — как в исходнике */
+  --yaru-insensitive-fg-color: #8F9191;   /* mix(fg, bg, 50%) */
+  --yaru-switch-bg-color: #565656;
+  --yaru-check-bg-color: #313131;
+  --yaru-headerbar-bg-color: #242424;     /* darken(bg, 3%) */
+  --yaru-menu-bg-color: #1D1D1D;           /* lighten(jet, 2%) */
+  --yaru-sidebar-bg-color: #2A2A2A;       /* mix(bg, base, 50%) */
+  --yaru-link-color: #F29B7D;             /* lighten(accent, 20%) */
+  --yaru-warning-color: #F99B11;
+  --yaru-error-color: #C7162B;
+  --yaru-success-color: #109B26;          /* lighten(green, 5%) */
+  --yaru-destructive-color: #991121;      /* darken(red, 10%) */
+  --yaru-dark-fill-color: #1F1F1F;        /* mix(borders, bg, 50%) */
+  --yaru-aubergine: #924D8B;
+  --yaru-dark-aubergine: #2C001E;
+
+  /* — производные, для раскладки доски — */
+  --surface: #343434;                     /* lighten(bg, 3%) — карточки */
+  --surface-2: #3B3B3B;
+  --ink-dim: #B8B8B8;
+  --focus-ring: 0 0 0 2px var(--yaru-accent-active-color);
+  --radius: 8px;
+  --mono: ui-monospace, "Ubuntu Mono", "DejaVu Sans Mono", monospace;
+  --topbar-h: 44px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--yaru-bg-color);
+  color: var(--yaru-fg-color);
+  font: 14px/1.45 system-ui, "Ubuntu", "Cantarell", sans-serif;
+}
+
+body { display: flex; flex-direction: column; overflow: hidden; }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius); }
+
+/* ---------------- шапка ---------------- */
+.topbar {
+  display: flex; align-items: center; gap: 10px;
+  height: var(--topbar-h); padding: 0 10px; flex: none;
+  background: #300A24;                 /* тёмная шапка, п. 9.3 */
+  border-bottom: 1px solid var(--yaru-dark-aubergine);
+}
+.brand { display: flex; align-items: center; gap: 6px; }
+.brand b { letter-spacing: .2px; }
+.version { color: #A98BA6; font-size: 11px; font-family: var(--mono); }
+.repo-path {
+  font-family: var(--mono); font-size: 11px; color: #C9B0C6;
+  background: #22071a; padding: 2px 6px; border-radius: var(--radius);
+  border: 1px solid #45092f; max-width: 34ch; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.spacer { flex: 1; }
+
+.field { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #D9C6D7; }
+.field > span { white-space: nowrap; }
+.check { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #D9C6D7; }
+
+input, select, textarea {
+  background: var(--yaru-check-bg-color);
+  border: 1px solid var(--yaru-border-color);
+  border-radius: var(--radius);
+  padding: 4px 7px;
+}
+input::placeholder, textarea::placeholder { color: #7C7C7C; }
+textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 13px; }
+input.num { width: 7ch; }
+input.color { width: 44px; padding: 2px; height: 28px; }
+.mini { padding: 3px 6px; font-size: 13px; }
+
+.icon-btn {
+  display: inline-grid; place-items: center;
+  width: 30px; height: 30px; padding: 0;
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius);
+  cursor: pointer;
+}
+.icon-btn:hover { background: #45092f; border-color: #5c0f41; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; cursor: pointer;
+  background: var(--surface-2);
+  border: 1px solid var(--yaru-border-color);
+  border-radius: var(--radius);
+}
+.btn:hover { background: #454545; }
+.btn.accent { background: var(--yaru-accent-bg-color); border-color: var(--yaru-accent-focused-color); color: #fff; }
+.btn.accent:hover { background: var(--yaru-accent-active-color); }
+.btn.danger { border-color: #5a1b1b; color: #F0A6A6; }
+.btn.danger:hover { background: #3a1b1b; }
+.link-btn { background: none; border: none; color: var(--yaru-link-color); cursor: pointer; text-decoration: underline; padding: 0; }
+
+/* ---------------- панель фильтров ---------------- */
+.toolbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px; flex: none;
+  background: var(--yaru-headerbar-bg-color);
+  border-bottom: 1px solid var(--yaru-border-color);
+}
+.board-meta { color: var(--ink-dim); font-size: 12px; font-family: var(--mono); }
+
+/* ---------------- доска ---------------- */
+.board {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 12px; overflow-x: auto; overflow-y: hidden;
+  flex: 1;
+}
+.col {
+  display: flex; flex-direction: column; min-height: 0;
+  width: 290px; max-height: 100%; flex: none;
+  background: var(--surface);
+  border: 1px solid var(--yaru-border-color);
+  border-radius: var(--radius);
+}
+.col.dragover { border-color: var(--yaru-accent-active-color); box-shadow: var(--focus-ring); }
+.col.over-limit { border-color: var(--yaru-warning-color); }
+.col-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; flex: none;
+  border-bottom: 1px solid var(--yaru-border-color);
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--yaru-base-color);
+}
+.col-head .name { font-weight: 600; }
+.col-head .count { color: var(--ink-dim); font-size: 12px; font-family: var(--mono); }
+.col.over-limit .col-head .count { color: var(--yaru-warning-color); font-weight: 700; }
+.col-head .wip-badge {
+  margin-left: auto; font-size: 11px; font-family: var(--mono);
+  padding: 1px 6px; border-radius: var(--radius);
+  background: var(--yaru-switch-bg-color); color: #E4E4E4;
+}
+.col.over-limit .wip-badge { background: var(--yaru-warning-color); color: #241a00; }
+.col-body { padding: 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.col-empty { color: #7E7E7E; font-size: 12px; padding: 6px 2px; }
+
+.card {
+  background: var(--surface-2);
+  border: 1px solid var(--yaru-border-color);
+  border-left: 3px solid var(--yaru-switch-bg-color);
+  border-radius: var(--radius);
+  padding: 8px 9px; cursor: grab;
+}
+.card:hover { border-color: var(--yaru-accent-focused-color); }
+.card.dragging { opacity: .5; cursor: grabbing; }
+.card.selected { box-shadow: var(--focus-ring); }
+.card .cid { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
+.card .ctitle { margin: 2px 0 6px; }
+.card .chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; padding: 1px 6px; border-radius: var(--radius);
+  background: var(--yaru-dark-fill-color); color: var(--ink-dim);
+  border: 1px solid #262626;
+}
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--yaru-accent-color); }
+.chip.warn { color: var(--yaru-warning-color); border-color: #4a3410; }
+.chip.ok { color: var(--yaru-success-color); border-color: #1d3a15; }
+.sub-row { margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+.bar { flex: 1; height: 4px; background: var(--yaru-dark-fill-color); border-radius: 2px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--yaru-success-color); }
+.sub-toggle { background: none; border: none; color: var(--ink-dim); cursor: pointer; padding: 0 2px; font-family: var(--mono); }
+.sub-list { list-style: none; margin: 4px 0 0; padding: 0 0 0 8px; display: flex; flex-direction: column; gap: 4px; }
+.sub-list .card { padding: 5px 7px; cursor: pointer; }
+.sub-list .card .ctitle { margin: 0; font-size: 13px; }
+.nudge { display: flex; gap: 4px; margin-top: 6px; }
+.nudge button {
+  font-family: var(--mono); font-size: 11px; padding: 0 6px;
+  background: var(--yaru-dark-fill-color); border: 1px solid #262626;
+  border-radius: var(--radius); cursor: pointer; color: var(--ink-dim);
+}
+.nudge button:hover { color: var(--yaru-fg-color); border-color: var(--yaru-accent-focused-color); }
+
+/* ---------------- панель карточки ---------------- */
+.detail {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100vw);
+  background: var(--yaru-bg-color);
+  border-left: 1px solid var(--yaru-border-color);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, .35);
+  display: flex; flex-direction: column; z-index: 20;
+}
+.detail[hidden] { display: none; }
+.detail-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; background: var(--yaru-headerbar-bg-color);
+  border-bottom: 1px solid var(--yaru-border-color); flex: none;
+}
+.detail-body { padding: 10px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.task-id { font-family: var(--mono); color: var(--yaru-link-color); }
+.title-input { font-size: 16px; font-weight: 600; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.block { border-top: 1px solid var(--yaru-border-color); padding-top: 8px; }
+.block h3 { margin: 0 0 6px; font-size: 13px; color: var(--ink-dim); font-weight: 600; display: flex; gap: 8px; align-items: center; }
+.pill { font-family: var(--mono); font-size: 11px; background: var(--yaru-switch-bg-color); padding: 0 6px; border-radius: var(--radius); color: #E6E6E6; }
+
+ul.subtasks, ul.attachments, ul.commits, ul.modules-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.subtasks .row, .attachments .row, .commits .row { justify-content: space-between; }
+.att-name { font-family: var(--mono); font-size: 12px; }
+.att-size { color: var(--ink-dim); font-size: 11px; font-family: var(--mono); }
+.thumb { max-width: 100%; border-radius: var(--radius); border: 1px solid var(--yaru-border-color); display: block; margin-top: 6px; cursor: zoom-in; }
+.dropzone {
+  border: 1px dashed #3F3F3F; border-radius: var(--radius);
+  padding: 10px; text-align: center; color: var(--ink-dim); font-size: 12px;
+}
+.dropzone.hot { border-color: var(--yaru-accent-active-color); background: #33241f; color: var(--yaru-fg-color); }
+.commits .hash { font-family: var(--mono); font-size: 12px; color: var(--yaru-link-color); }
+.commits .subject { font-size: 12px; }
+.commits .meta { color: var(--ink-dim); font-size: 11px; font-family: var(--mono); }
+.timeline { list-style: none; margin: 0; padding: 0 0 0 10px; border-left: 1px solid var(--yaru-border-color); display: flex; flex-direction: column; gap: 6px; }
+.timeline li { font-size: 12px; color: var(--ink-dim); padding-left: 4px; }
+.timeline li b { color: var(--yaru-fg-color); font-weight: 600; }
+.timeline .when { font-family: var(--mono); font-size: 11px; }
+pre.diff {
+  font-family: var(--mono); font-size: 12px; line-height: 1.35;
+  background: var(--yaru-menu-bg-color); border: 1px solid var(--yaru-border-color);
+  border-radius: var(--radius); padding: 8px; overflow: auto; max-height: 60vh;
+  white-space: pre; color: #D8D8D8;
+}
+.diff .add { color: #7BD77B; }
+.diff .del { color: #F08A8A; }
+.diff .meta { color: var(--yaru-link-color); }
+.truncated { color: var(--yaru-warning-color); font-size: 12px; margin: 4px 0; }
+
+/* ---------------- markdown ---------------- */
+.markdown { font-size: 13px; line-height: 1.5; }
+.markdown h1, .markdown h2, .markdown h3 { font-size: 14px; margin: 8px 0 4px; }
+.markdown code { font-family: var(--mono); background: var(--yaru-dark-fill-color); padding: 0 4px; border-radius: 4px; }
+.markdown pre { background: var(--yaru-menu-bg-color); padding: 8px; border-radius: var(--radius); overflow: auto; border: 1px solid var(--yaru-border-color); }
+.markdown pre code { background: none; padding: 0; }
+.markdown ul, .markdown ol { margin: 4px 0; padding-left: 20px; }
+.markdown a { color: var(--yaru-link-color); }
+.markdown blockquote { margin: 4px 0; padding-left: 8px; border-left: 3px solid var(--yaru-switch-bg-color); color: var(--ink-dim); }
+
+/* ---------------- модалка/тост ---------------- */
+.prompt { background: var(--yaru-bg-color); color: var(--yaru-fg-color); border: 1px solid var(--yaru-border-color); border-radius: var(--radius); }
+.prompt::backdrop { background: rgba(0, 0, 0, .5); }
+.prompt h3 { margin: 0 0 8px; font-size: 14px; }
+.prompt input { width: 100%; }
+.prompt menu { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 0 0; margin: 0; }
+.toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+  background: var(--yaru-menu-bg-color); border: 1px solid var(--yaru-accent-focused-color);
+  color: var(--yaru-fg-color); padding: 8px 14px; border-radius: var(--radius);
+  z-index: 40; max-width: 80vw;
+}
+.toast.err { border-color: var(--yaru-error-color); }
+
+/* ---------------- телефон ---------------- */
+@media (max-width: 760px) {
+  .topbar { flex-wrap: wrap; height: auto; padding: 6px 8px; gap: 6px; }
+  .repo-path { max-width: 24ch; }
+  .col { width: 82vw; }
+  .detail { width: 100vw; }
+  .board { padding: 8px; }
+}
