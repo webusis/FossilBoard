@@ -5,6 +5,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -17,6 +18,7 @@ from pathlib import Path
 
 from fossilboard import config as config_mod
 from fossilboard import gitlink
+from fossilboard import repos as repolib
 from fossilboard import storage
 from fossilboard.storage import (
     BoardError, add_module, add_task, atomic_write_json, delete_attachment, delete_task,
@@ -351,6 +353,22 @@ class TestGitLink(TempRepoCase):
         self.make_commit(f"{task['id']}: в feature")
         commits = gitlink.commits_for_task(self.repo, task["id"])
         self.assertEqual(len(commits), 2, "--all должен видеть все ветки")
+
+    def test_stash_commits_are_not_task_links(self):
+        """git stash к задаче отношения не имеет, даже если в тексте есть #ID."""
+        task = self.new_task("Без мусора")
+        self.make_commit(f"{task['id']}: настоящая работа")
+        (self.repo / "code.py").write_text("# черновик\n", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "stash", "-q", "-m", f"{task['id']}: черновик")
+        found = gitlink.commits_for_task(self.repo, task["id"])
+        subjects = [c["subject"] for c in found]
+        self.assertEqual(len(subjects), 1, f"stash не должен считаться привязкой: {subjects}")
+        self.assertIn("настоящая работа", subjects[0])
+        self.assertTrue(gitlink.is_stash("WIP on master: feat: что-то (#FB-1):"))
+        self.assertTrue(gitlink.is_stash("index on master: FB-1: правка"))
+        self.assertFalse(gitlink.is_stash("feat: FB-1: правка"))
+        self.assertFalse(gitlink.is_stash("WIP на доске: FB-1"))
 
     def test_head_commit(self):
         self.assertIsNone(gitlink.head_commit(self.repo))
@@ -858,6 +876,226 @@ class TestConfigLookup(TempRepoCase):
                                capture_output=True, text=True, env=env, cwd=str(self.work))
         self.assertEqual(again.returncode, 1)
         self.assertIn("уже есть", again.stderr)
+
+
+class TestRepoManager(TempRepoCase):
+    """Создание и подключение реп из интерфейса: пути руками, ничего не стираем."""
+
+    prefix = "FB"
+    board_name = "FossilBoard"
+
+    def setUp(self):
+        super().setUp()
+        self.cfg_path = self.tmp / "config.json"
+        self.cfg = config_mod.load(self.cfg_path)
+        config_mod.upsert_project(self.cfg, "FB", "FossilBoard", str(self.repo))
+
+    def test_expand_requires_absolute_path(self):
+        with self.assertRaises(repolib.RepoError):
+            repolib.expand("projects/relative")
+        with self.assertRaises(repolib.RepoError):
+            repolib.expand("")
+        self.assertEqual(repolib.expand(str(self.repo)), self.repo.resolve())
+        self.assertTrue(str(repolib.expand("~/x")).startswith(str(Path.home())))
+
+    def test_create_makes_folder_git_and_board(self):
+        target = self.tmp / "new-game"
+        result = repolib.attach(self.cfg, str(target), project_id="GAME", name="New Game",
+                                create=True)
+        self.assertTrue((target / ".git").is_dir(), "репа должна быть git")
+        self.assertTrue(storage.board_path(target).is_file())
+        self.assertEqual(result["project"]["id"], "GAME")
+        self.assertEqual(result["project"]["repo_path"], str(target.resolve()))
+        self.assertEqual(config_mod.load(self.cfg_path)["projects"][-1]["id"], "GAME")
+        board = load_board(target)
+        self.assertEqual(board["project"]["repo_path"], str(target.resolve()))
+
+    def test_create_in_existing_folder_keeps_files(self):
+        target = self.tmp / "existing"
+        target.mkdir()
+        (target / "main.py").write_text("мой код\n", encoding="utf-8")
+        repolib.attach(self.cfg, str(target), project_id="EXST", create=True)
+        self.assertEqual((target / "main.py").read_text(encoding="utf-8"), "мой код\n")
+        self.assertTrue(storage.board_path(target).is_file())
+
+    def test_create_twice_is_a_clear_error(self):
+        target = self.tmp / "twice"
+        repolib.attach(self.cfg, str(target), project_id="TW", create=True)
+        with self.assertRaises(repolib.RepoError) as ctx:
+            repolib.attach(self.cfg, str(target), project_id="TW", create=True)
+        self.assertIn("уже есть", str(ctx.exception))
+
+    def test_open_existing_repo_fixes_stale_path(self):
+        stale = load_board(self.repo)
+        stale["project"]["repo_path"] = "/где/то/на/другой/машине"
+        save_board(self.repo, stale)
+        result = repolib.attach(self.cfg, str(self.repo), create=False)
+        self.assertEqual(result["project"]["repo_path"], str(self.repo.resolve()))
+        self.assertEqual(load_board(self.repo)["project"]["repo_path"], str(self.repo.resolve()))
+
+    def test_open_refuses_non_git_and_boardless(self):
+        plain = self.tmp / "plain"
+        plain.mkdir()
+        with self.assertRaises(repolib.RepoError) as ctx:
+            repolib.attach(self.cfg, str(plain), create=False)
+        self.assertIn("не git-репозиторий", str(ctx.exception))
+
+        nopanel = self.tmp / "nopanel"
+        nopanel.mkdir()
+        git(nopanel, "init", "-q")
+        with self.assertRaises(repolib.RepoError) as ctx:
+            repolib.attach(self.cfg, str(nopanel), create=False)
+        self.assertIn("нет доски", str(ctx.exception))
+        self.assertIn("board.py init", str(ctx.exception), "подсказка с командой обязательна")
+
+    def test_open_missing_path_refused(self):
+        with self.assertRaises(repolib.RepoError) as ctx:
+            repolib.attach(self.cfg, str(self.tmp / "нет-такого"), create=False)
+        self.assertIn("нет такого каталога", str(ctx.exception))
+
+    def test_suggest_id_from_folder_name(self):
+        self.assertEqual(repolib.suggest_id(Path("/home/u/projects/k2c-proto"), []), "K2CP")
+        busy = repolib.suggest_id(Path("/home/u/projects/game"), ["GAME"])
+        self.assertNotEqual(busy, "GAME", "занятый префикс надо развести")
+
+    def test_describe_reports_state_for_ui(self):
+        info = repolib.describe(self.repo)
+        self.assertTrue(info["is_dir"] and info["is_git"] and info["has_board"])
+        self.assertTrue(info["board_ok"])
+        storage.board_path(self.repo).write_text("{ сломан", encoding="utf-8")
+        broken = repolib.describe(self.repo)
+        self.assertFalse(broken["board_ok"])
+        self.assertIn("битый JSON", broken["board_error"])
+        missing = repolib.describe(self.tmp / "нет")
+        self.assertFalse(missing["exists"])
+
+    def test_browse_lists_dirs_with_tags(self):
+        (self.tmp / "sub").mkdir()
+        (self.tmp / ".hidden").mkdir()
+        data = repolib.browse(str(self.tmp))
+        self.assertEqual(len(data), 1)
+        names = [d["name"] for d in data[0]["dirs"]]
+        self.assertIn("sub", names)
+        self.assertNotIn(".hidden", names, "скрытые каталоги не показываем")
+
+
+class TestRepoApi(TempRepoCase):
+    """Те же сценарии через HTTP — как их зовёт браузер."""
+
+    prefix = "FB"
+    board_name = "FossilBoard"
+
+    @classmethod
+    def setUpClass(cls):
+        from fossilboard.server import Handler
+        cls.Handler = Handler
+
+    def setUp(self):
+        super().setUp()
+        self.cfg_path = self.tmp / "config.json"
+        cfg = config_mod.load(self.cfg_path)
+        config_mod.upsert_project(cfg, "FB", "FossilBoard", str(self.repo))
+        config_mod.save(cfg, self.cfg_path)
+        self.Handler.default_repo = str(self.repo)
+        self.Handler.cfg = config_mod.load(self.cfg_path)
+        self.Handler.quiet = True
+        import threading
+        from http.server import ThreadingHTTPServer
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), self.Handler)
+        self.port = self.httpd.server_address[1]
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+        self.base = f"http://127.0.0.1:{self.port}"
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        super().tearDown()
+
+    def get(self, url):
+        with urlopen(url) as resp:
+            return resp.status, json.loads(resp.read())
+
+    def post(self, url, payload):
+        req = Request(url, data=json.dumps(payload).encode(), method="POST",
+                      headers={"Content-Type": "application/json"})
+        try:
+            with urlopen(req) as resp:
+                return resp.status, json.loads(resp.read())
+        except HTTPError as exc:
+            return exc.code, json.loads(exc.read() or b"{}")
+
+    def test_create_and_open_through_api(self):
+        target = self.tmp / "api-game"
+        status, data = self.post(self.base + "/api/projects",
+                                 {"path": str(target), "create": True, "project_id": "APIG"})
+        self.assertEqual(status, 201, data)
+        self.assertTrue(storage.board_path(target).is_file())
+        # проект появился в состоянии доски без перезапуска сервера
+        status, state = self.get(self.base + "/api/state")
+        self.assertIn("APIG", [p["id"] for p in state["projects"]])
+        # и его доска читается
+        status, board = self.get(self.base + f"/api/board?project=APIG")
+        self.assertEqual(board["project"]["id"], "APIG")
+
+    def test_api_refuses_relative_path(self):
+        status, data = self.post(self.base + "/api/projects", {"path": "relative/path"})
+        self.assertEqual(status, 400)
+        self.assertIn("абсолютный путь", data["error"])
+
+    def test_api_refuses_non_repo_with_hint(self):
+        plain = self.tmp / "plain"
+        plain.mkdir()
+        status, data = self.post(self.base + "/api/projects", {"path": str(plain)})
+        self.assertEqual(status, 400)
+        self.assertIn("не git-репозиторий", data["error"])
+
+    def test_browse_endpoint(self):
+        (self.tmp / "idea").mkdir()
+        status, data = self.get(self.base + f"/api/browse?path={quote(str(self.tmp))}")
+        self.assertEqual(status, 200)
+        self.assertIn("idea", [d["name"] for d in data[0]["dirs"]])
+
+    def test_repo_probe_endpoint(self):
+        status, data = self.get(self.base + f"/api/repo?path={quote(str(self.repo))}")
+        self.assertEqual(status, 200)
+        self.assertTrue(data["has_board"])
+        self.assertTrue(data["is_git"])
+
+
+class TestWebMarkup(TempRepoCase):
+    """Статика отдаётся как есть: проверяем, что в разметке нет ловушек."""
+
+    def test_no_duplicate_ids(self):
+        """Дубль id ломает $(...) молча: элемент перестаёт получать события.
+
+        Так случилось с #repo-path: он был и в шапке, и в диалоге новой репы,
+        и весь диалог писал в шапку вместо поля ввода.
+        """
+        html = (REPO_ROOT / "fossilboard" / "web" / "index.html").read_text(encoding="utf-8")
+        ids = re.findall(r'\bid="([^"]+)"', html)
+        dupes = sorted({i for i in ids if ids.count(i) > 1})
+        self.assertEqual(dupes, [], f"повторяющиеся id в index.html: {dupes}")
+
+    def test_selectors_used_by_js_exist_in_markup(self):
+        html = (REPO_ROOT / "fossilboard" / "web" / "index.html").read_text(encoding="utf-8")
+        app = (REPO_ROOT / "fossilboard" / "web" / "app.js").read_text(encoding="utf-8")
+        used = set(re.findall(r"\$\('#([a-zA-Z0-9_-]+)'\)", app))
+        missing = sorted(i for i in used if f'id="{i}"' not in html)
+        self.assertEqual(missing, [], f"app.js обращается к несуществующим элементам: {missing}")
+
+    def test_no_remote_resources(self):
+        """Доска работает офлайн: внешних загрузок в статике быть не должно."""
+        web = REPO_ROOT / "fossilboard" / "web"
+        for path in web.iterdir():
+            if path.suffix not in (".html", ".js", ".css"):
+                continue
+            text = path.read_text(encoding="utf-8")
+            for url in re.findall(r'(?:src|href)=["\'](https?://[^"\']+)', text):
+                self.fail(f"{path.name} тянет {url}")
+        html = (web / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("cdn.", html)
+        self.assertNotIn("fonts.googleapis", html)
 
 
 if __name__ == "__main__":

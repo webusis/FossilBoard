@@ -264,6 +264,26 @@ pre.diff {
 .markdown a { color: var(--yaru-link-color); }
 .markdown blockquote { margin: 4px 0; padding-left: 8px; border-left: 3px solid var(--yaru-switch-bg-color); color: var(--ink-dim); }
 
+/* ---------------- диалог репозиториев ---------------- */
+.repo-dialog { width: min(560px, 92vw); }
+.repo-field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink-dim); }
+.repo-field input { width: 100%; }
+.repo-field.small { flex: 1 1 0; min-width: 0; }
+.repo-field input.mono { font-family: var(--mono); font-size: 13px; }
+.repo-row { margin-top: 8px; gap: 8px; }
+.repo-row .repo-field input { width: 100%; }
+.repo-status { min-height: 18px; margin: 6px 0 0; font-size: 12px; color: var(--ink-dim); }
+.repo-status.err { color: var(--yaru-warning-color); }
+.repo-status.ok { color: var(--yaru-success-color); }
+.repo-suggest {
+    list-style: none; margin: 6px 0 0; padding: 0; max-height: 168px; overflow-y: auto;
+    border: 1px solid var(--yaru-border-color); border-radius: var(--radius);
+    background: var(--yaru-menu-bg-color);
+}
+.repo-suggest li { padding: 4px 8px; font-size: 12px; cursor: pointer; display: flex; gap: 6px; align-items: center; }
+.repo-suggest li:hover { background: var(--yaru-check-bg-color); }
+.repo-suggest .tag { color: var(--ink-dim); font-family: var(--mono); font-size: 11px; }
+
 /* ---------------- модалка/тост ---------------- */
 .prompt { background: var(--yaru-bg-color); color: var(--yaru-fg-color); border: 1px solid var(--yaru-border-color); border-radius: var(--radius); }
 .prompt::backdrop { background: rgba(0, 0, 0, .5); }

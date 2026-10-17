@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from . import __version__
 from . import config as cfgmod
 from . import gitlink
+from . import repos as repolib
 from .storage import (
     BoardError, add_module, add_task, attachment_dir, attach_file, delete_attachment,
     delete_module, delete_task, find_module, find_task, guess_content_type, load_board,
@@ -184,6 +185,8 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(405, f"{method} не поддерживается")
         except ApiError as exc:
             self._error(exc.status, exc.message)
+        except repolib.RepoError as exc:
+            self._error(400, str(exc))
         except BoardError as exc:
             self._error(400, str(exc))
         except gitlink.GitError as exc:
@@ -235,6 +238,13 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(400, "нужен rev")
             self._json(gitlink.show_commit(repo, rev))
             return
+        if path == "/api/browse":
+            self._json(repolib.browse(q.get("path")))
+            return
+        if path == "/api/repo":
+            raw = q.get("path", "")
+            self._json(repolib.describe(repolib.expand(raw)))
+            return
         if path.startswith("/api/attachments/"):
             # /api/attachments/<task-id>/<имя файла>
             tail = path[len("/api/attachments/"):]
@@ -261,6 +271,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- POST -----------------------------------------------------------
     def _api_post(self, path: str, q: dict) -> None:
+        if path == "/api/projects":
+            return self._api_project(body=self._read_json())
         repo = _project_repo(q.get("project"), self.default_repo, self.cfg)
         with _write_lock:
             data = load_board(repo)
@@ -308,6 +320,23 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(mod, 201)
                 return
         raise ApiError(404, f"нет такого маршрута: {path}")
+
+    def _api_project(self, body: dict) -> None:
+        """Создать новую репу с доской или подключить существующую.
+
+        Конфиг здесь единственное место, куда пишется «что у меня есть»,
+        поэтому после успеха обновляем и его в памяти — иначе /api/state
+        продолжит показывать старый список.
+        """
+        raw = body.get("path", "")
+        with _write_lock:
+            cfg = self.cfg if self.cfg is not None else cfgmod.load()
+            result = repolib.attach(cfg, raw,
+                                    project_id=(body.get("project_id") or "").strip() or None,
+                                    name=(body.get("name") or "").strip() or None,
+                                    create=bool(body.get("create")))
+            self.cfg = cfg
+        self._json(result, 201)
 
     # ---- PUT/PATCH ------------------------------------------------------
     def _api_update(self, path: str, q: dict) -> None:

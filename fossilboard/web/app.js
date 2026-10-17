@@ -735,6 +735,117 @@ $('#module-filter').addEventListener('change', (e) => { state.filters.module = e
 $('#session-filter').addEventListener('change', (e) => { state.filters.session = e.target.value; render(); });
 $('#parents-filter').addEventListener('change', (e) => { state.filters.parents = e.target.checked; render(); });
 
+/* ---------------------------------------------------------------- репозитории */
+const repoDialog = $('#repo-dialog');
+const repoState = { create: true };
+
+async function openRepoDialog(create) {
+  repoState.create = create;
+  repoDialog.querySelector('#repo-title').textContent = create ? 'Новая репа с доской' : 'Открыть репу';
+  $('#repo-ok').textContent = create ? 'создать' : 'открыть';
+  $('#repo-id').closest('.repo-field').hidden = !create;
+  $('#repo-name').closest('.repo-field').hidden = !create;
+  const input = $('#repo-new-path');
+  input.value = '';
+  $('#repo-status').textContent = create
+    ? 'Папка будет создана, внутри — git init и .board/board.json'
+    : 'Укажи путь к существующей репе: папка должна быть git-репозиторием';
+  $('#repo-status').className = 'repo-status';
+  $('#repo-suggest').hidden = true;
+  repoDialog.showModal();
+  input.focus();
+  await refreshSuggestions();
+}
+
+async function refreshSuggestions() {
+  const raw = $('#repo-new-path').value.trim();
+  const parent = raw.replace(/[^/]*$/, '') || '';
+  try {
+    const [data] = await api(`/api/browse?path=${encodeURIComponent(parent)}`);
+    const list = $('#repo-suggest');
+    const name = raw.replace(/^.*\//, '');
+    const dirs = data.dirs || [];
+    list.innerHTML = dirs.slice(0, 12).map((d) => `<li data-path="${esc(d.path)}">
+      <span>${esc(name && d.name.startsWith(name) ? d.name.slice(name.length) : d.name)}</span>
+      ${d.git ? '<span class="tag">git</span>' : ''}
+      ${d.board ? '<span class="tag">доска</span>' : ''}
+    </li>`).join('');
+    list.hidden = dirs.length === 0;
+  } catch { /* подсказка не критична */ }
+}
+
+async function probeRepo() {
+  const raw = $('#repo-new-path').value.trim();
+  const status = $('#repo-status');
+  if (!raw) { status.textContent = ''; return; }
+  try {
+    const info = await api(`/api/repo?path=${encodeURIComponent(raw)}`);
+    const bits = [];
+    if (!info.exists) bits.push('папки нет — будет создана');
+    else if (!info.is_git) bits.push('не git-репозиторий');
+    if (info.exists && info.is_dir && !info.has_board) bits.push('доски нет');
+    if (info.board_ok === false) bits.push(`доска сломана: ${info.board_error || ''}`);
+    if (!bits.length) bits.push('путь свободен');
+    status.textContent = bits.join(' · ');
+    status.className = 'repo-status' + (info.board_ok === false ? ' err' : '');
+  } catch (err) {
+    status.textContent = err.message;
+    status.className = 'repo-status err';
+  }
+}
+
+$('#repo-new-path').addEventListener('input', () => { refreshSuggestions(); probeRepo(); });
+$('#repo-suggest').addEventListener('click', (e) => {
+  const item = e.target.closest('[data-path]');
+  if (!item) return;
+  const input = $('#repo-new-path');
+  const tail = input.value.replace(/^.*\//, '');
+  input.value = item.dataset.path + (tail ? `/${tail}` : '');
+  refreshSuggestions();
+  probeRepo();
+});
+
+$('#repo-form').addEventListener('submit', async (e) => {
+  const path = $('#repo-new-path').value.trim();
+  if (!path) { e.preventDefault(); return; }
+  e.preventDefault();
+  const btn = $('#repo-ok');
+  btn.disabled = true;
+  try {
+    const result = await api('/api/projects', {
+      method: 'POST',
+      body: JSON.stringify({
+        path,
+        create: repoState.create,
+        project_id: $('#repo-id').value.trim(),
+        name: $('#repo-name').value.trim(),
+      }),
+    });
+    await loadProjects();
+    state.current = result.project.id;
+    $('#project-select').value = result.project.id;
+    await loadBoard();
+    closeDetail();
+    repoDialog.close();
+    toast(`${repoState.create ? 'создано' : 'открыто'}: ${result.project.name} → ${result.project.repo_path}`);
+  } catch (err) {
+    const status = $('#repo-status');
+    status.textContent = err.message;
+    status.className = 'repo-status err';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#new-repo').addEventListener('click', () => openRepoDialog(true));
+$('#open-repo').addEventListener('click', () => openRepoDialog(false));
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+    e.preventDefault();
+    openRepoDialog(false);
+  }
+});
+
 /* ---------------------------------------------------------------- старт */
 (async function boot() {
   try {

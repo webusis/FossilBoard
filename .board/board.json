@@ -27,7 +27,7 @@
     }
   ],
   "counters": {
-    "task": 15
+    "task": 16
   },
   "modules": [
     {
@@ -452,8 +452,8 @@
     },
     {
       "attachments": [],
-      "closed_at": null,
-      "column_id": "ready",
+      "closed_at": "2026-10-17T12:11:33+00:00",
+      "column_id": "done",
       "created_at": "2026-10-17T10:48:16+00:00",
       "description": "",
       "estimate": null,
@@ -477,6 +477,11 @@
           "at": "2026-10-17T10:52:40+00:00",
           "kind": "moved",
           "payload": "wip → ready"
+        },
+        {
+          "at": "2026-10-17T12:11:33+00:00",
+          "kind": "closed",
+          "payload": ""
         }
       ],
       "id": "FB-12",
@@ -484,7 +489,7 @@
       "parent_id": "FB-8",
       "session_label": null,
       "title": "Отметить прочитанные коммиты как прочитанные",
-      "updated_at": "2026-10-17T10:52:40+00:00"
+      "updated_at": "2026-10-17T12:11:33+00:00"
     },
     {
       "attachments": [
@@ -639,6 +644,71 @@
       "session_label": null,
       "title": "Баг UI: пятая колонка обрезалась на широком экране",
       "updated_at": "2026-10-17T11:05:01+00:00"
+    },
+    {
+      "attachments": [
+        {
+          "added_at": "2026-10-17T12:20:59+00:00",
+          "name": "FB-16-after.png",
+          "path": "attachments/FB-16/FB-16-after.png",
+          "size": 74730
+        },
+        {
+          "added_at": "2026-10-17T12:20:58+00:00",
+          "name": "FB-16-before.png",
+          "path": "attachments/FB-16/FB-16-before.png",
+          "size": 106291
+        },
+        {
+          "added_at": "2026-10-17T12:20:59+00:00",
+          "name": "FB-16-repo-dialog.png",
+          "path": "attachments/FB-16/FB-16-repo-dialog.png",
+          "size": 92725
+        }
+      ],
+      "closed_at": "2026-10-17T12:21:20+00:00",
+      "column_id": "done",
+      "created_at": "2026-10-17T12:17:26+00:00",
+      "description": "Кнопки рядом с селектором проекта: новая репа (папка + git init + доска) и открытие существующей. Путь вводится руками, с подсказкой по каталогам и подсветкой состояния пути.",
+      "estimate": 2.0,
+      "events": [
+        {
+          "at": "2026-10-17T12:17:26+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T12:17:30+00:00",
+          "kind": "moved",
+          "payload": "backlog → wip"
+        },
+        {
+          "at": "2026-10-17T12:20:58+00:00",
+          "kind": "attach",
+          "payload": "FB-16-before.png"
+        },
+        {
+          "at": "2026-10-17T12:20:59+00:00",
+          "kind": "attach",
+          "payload": "FB-16-after.png"
+        },
+        {
+          "at": "2026-10-17T12:20:59+00:00",
+          "kind": "attach",
+          "payload": "FB-16-repo-dialog.png"
+        },
+        {
+          "at": "2026-10-17T12:21:20+00:00",
+          "kind": "closed",
+          "payload": ""
+        }
+      ],
+      "id": "FB-16",
+      "module_id": "0474d612",
+      "parent_id": null,
+      "session_label": null,
+      "title": "Создание и открытие реп из интерфейса",
+      "updated_at": "2026-10-17T12:21:20+00:00"
     }
   ]
 }

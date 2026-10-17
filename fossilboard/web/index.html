@@ -34,6 +34,10 @@
     <span>проект</span>
     <select id="project-select"></select>
   </label>
+  <button class="icon-btn" id="new-repo" title="создать репу с доской (+ новая репа)">+</button>
+  <button class="icon-btn" id="open-repo" title="открыть существующую репу (⌘O)">
+    <svg width="16" height="16" viewBox="0 0 16 16"><path d="M1.5 4.5h4l1.5 2h7.5v6a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+  </button>
   <code class="repo-path" id="repo-path" title="репозиторий проекта"></code>
   <span class="spacer"></span>
   <label class="field">
@@ -128,6 +132,26 @@
 </aside>
 
 <div id="toast" class="toast" hidden></div>
+
+<dialog id="repo-dialog" class="prompt repo-dialog">
+  <form method="dialog" id="repo-form">
+    <h3 id="repo-title">Новая репа</h3>
+    <label class="repo-field">
+      <span>путь к репозиторию</span>
+      <input id="repo-new-path" class="mono" placeholder="/home/user/projects/my-game" autocomplete="off" spellcheck="false">
+    </label>
+    <ul id="repo-suggest" class="repo-suggest" hidden></ul>
+    <p id="repo-status" class="repo-status"></p>
+    <div class="row repo-row">
+      <label class="repo-field small"><span>префикс</span><input id="repo-id" class="mono" placeholder="GAME" maxlength="12"></label>
+      <label class="repo-field small"><span>имя</span><input id="repo-name" placeholder="Мой проект"></label>
+    </div>
+    <menu>
+      <button value="cancel" class="btn">отмена</button>
+      <button value="ok" class="btn accent" id="repo-ok">создать</button>
+    </menu>
+  </form>
+</dialog>
 
 <dialog id="prompt-dialog" class="prompt">
   <form method="dialog">

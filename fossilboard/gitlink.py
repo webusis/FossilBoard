@@ -48,6 +48,17 @@ def head_commit(repo_path: str) -> str | None:
         return None
 
 
+def is_stash(subject: str) -> bool:
+    """Коммит git stash не привязан к задаче, даже если в тексте есть хэштег.
+
+    Сообщения stash-коммитов выглядят как «WIP on master: <текст прошлого
+    коммита>», «On master: …», «index on master: <sha> …» — и упоминание
+    прошлого коммита с #FB-16 засчитывалось бы как ещё одна привязка,
+    хотя к задаче отношения не имеет.
+    """
+    return subject.startswith(("WIP on ", "index on ", "On ", "Untracked files on "))
+
+
 def commits_for_task(repo_path: str, task_id: str, limit: int = 50) -> list[dict]:
     """Найти коммиты, в сообщении которых встречается #<task-id>.
 
@@ -70,6 +81,8 @@ def commits_for_task(repo_path: str, task_id: str, limit: int = 50) -> list[dict
         if len(parts) != 5:
             continue
         full, short, date, author, subject = parts
+        if is_stash(subject):
+            continue
         commits.append({"hash": full, "short": short, "date": date,
                         "author": author, "subject": subject})
     return commits
