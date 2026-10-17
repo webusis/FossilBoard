@@ -20,6 +20,7 @@ const state = {
   current: '',
   board: null,
   detail: null,
+  visible: null,        // Set видимых по фильтрам ID, пересчитывается в render()
   filters: { search: '', module: '', session: '', parents: false },
 };
 
@@ -217,23 +218,26 @@ function visibleTasks() {
 function render() {
   const b = state.board;
   if (!b) return;
-  const shown = new Set(visibleTasks().map((t) => t.id));
+  const shown = state.visible = new Set(visibleTasks().map((t) => t.id));
+  // саб-задача живёт внутри родителя: в своей колонке отдельной карточкой
+  // она не рисуется, иначе одна и та же задача показывается дважды (#FB-13)
+  const childIds = new Set(b.tasks.filter((t) => t.parent_id).map((t) => t.id));
   const hasFilter = state.filters.search || state.filters.module || state.filters.session || state.filters.parents;
   const collapsed = getCollapsed();
   const html = b.columns.map((col) => {
     const wip = b.wip[col.id] || { count: 0, wip_limit: null, over: false };
-    const items = sortTasks(b.tasks.filter((t) => t.column_id === col.id));
-    const cards = items.map((t) => {
-      if (t.parent_id && !shown.has(t.id)) return '';
-      if (hasFilter && !shown.has(t.id)) return '';
+    const inColumn = sortTasks(b.tasks.filter((t) => t.column_id === col.id));
+    const tops = inColumn.filter((t) => !childIds.has(t.id));
+    const cards = tops.map((t) => {
+      if (hasFilter && !shown.has(t.id) && !kidsShown(t)) return '';
       return renderCard(t, b, collapsed);
     }).join('');
     return `<section class="col ${wip.over ? 'over-limit' : ''}" data-column="${esc(col.id)}">
       <header class="col-head">
         <span class="name">${esc(col.name)}</span>
-        <span class="count">${items.length}</span>
+        <span class="count">${tops.length}</span>
         ${wip.wip_limit != null
-          ? `<span class="wip-badge">WIP ${items.length}/${wip.wip_limit}</span>` : ''}
+          ? `<span class="wip-badge" title="всего карточек в колонке, включая саб-задачи">WIP ${wip.count}/${wip.wip_limit}</span>` : ''}
       </header>
       <div class="col-body" data-column="${esc(col.id)}">
         ${cards || '<p class="col-empty">пусто</p>'}
@@ -243,6 +247,12 @@ function render() {
   $('#board').innerHTML = html;
 }
 
+/** Родитель виден, если совпал сам или совпала хотя бы одна его саб-задача. */
+function kidsShown(task) {
+  return (state.board.tasks || [])
+    .filter((t) => t.parent_id === task.id && shown.has(t.id)).length > 0;
+}
+
 function subtaskProgress(id) {
   const kids = (state.board.tasks || []).filter((t) => t.parent_id === id);
   return { done: kids.filter((k) => k.column_id === 'done').length, total: kids.length };
@@ -250,7 +260,10 @@ function subtaskProgress(id) {
 
 function renderCard(task, b, collapsed) {
   const mod = moduleById(task.module_id);
-  const kids = (b.tasks || []).filter((t) => t.parent_id === task.id);
+  const filtered = state.filters.search || state.filters.module || state.filters.session || state.filters.parents;
+  const visible = state.visible;  // считается один раз на перерисовку, не на каждую карточку
+  const kids = (b.tasks || []).filter((t) => t.parent_id === task.id)
+    .filter((t) => !filtered || visible.has(t.id));
   const prog = subtaskProgress(task.id);
   const isCollapsed = collapsed.has(task.id);
   const att = (task.attachments || []).length;
@@ -261,7 +274,8 @@ function renderCard(task, b, collapsed) {
   if (att) chips.push(`<span class="chip">📎 ${att}</span>`);
   if (task.parent_id) chips.push(`<span class="chip">${icon('child', 11)} ${esc(task.parent_id)}</span>`);
 
-  const subBlock = kids.length ? `
+  const allKids = (b.tasks || []).filter((t) => t.parent_id === task.id);
+  const subBlock = allKids.length ? `
     <div class="sub-row">
       <button class="sub-toggle" data-toggle="${esc(task.id)}" title="свернуть саб-задачи">${isCollapsed ? '▸' : '▾'}</button>
       <div class="bar"><i style="width:${prog.total ? Math.round(100 * prog.done / prog.total) : 0}%"></i></div>
@@ -381,6 +395,9 @@ async function openDetail(id) {
     state.board.modules.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
   msel.value = t.module_id || '';
 
+  // deep link: /#FB-4 открывает карточку — удобно ссылаться и снимать скриншоты
+  if (location.hash.slice(1) !== t.id) location.hash = t.id;
+
   renderPreview();
   renderSubtasks(data);
   renderAttachments(data);
@@ -392,6 +409,7 @@ async function openDetail(id) {
 function closeDetail() {
   $('#detail').hidden = true;
   state.detail = null;
+  if (location.hash) location.hash = '';
   render();
 }
 
@@ -694,6 +712,11 @@ $('#new-task').addEventListener('click', async () => {
   } catch (err) { toast(err.message, true); }
 });
 
+window.addEventListener('hashchange', async () => {
+  const wanted = decodeURIComponent(location.hash.slice(1));
+  if (wanted && (!state.detail || state.detail.task.id !== wanted)) await openDetail(wanted);
+});
+
 $('#refresh').addEventListener('click', async () => {
   await loadProjects();
   await loadBoard();
@@ -717,6 +740,8 @@ $('#parents-filter').addEventListener('change', (e) => { state.filters.parents =
   try {
     await loadProjects();
     await loadBoard();
+    const wanted = decodeURIComponent(location.hash.slice(1));
+    if (wanted && state.board.tasks.some((t) => t.id === wanted)) await openDetail(wanted);
   } catch (err) {
     toast(err.message, true);
     $('#board').innerHTML = `<p class="col-empty">Не удалось загрузить доску: ${esc(err.message)}</p>`;

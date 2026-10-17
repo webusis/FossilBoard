@@ -27,7 +27,7 @@
     }
   ],
   "counters": {
-    "task": 12
+    "task": 13
   },
   "modules": [
     {
@@ -151,7 +151,14 @@
       "updated_at": "2026-10-17T10:48:16+00:00"
     },
     {
-      "attachments": [],
+      "attachments": [
+        {
+          "added_at": "2026-10-17T10:49:28+00:00",
+          "name": "FB-4-board.png",
+          "path": "attachments/FB-4/FB-4-board.png",
+          "size": 131133
+        }
+      ],
       "closed_at": null,
       "column_id": "wip",
       "created_at": "2026-10-17T10:48:11+00:00",
@@ -172,6 +179,11 @@
           "at": "2026-10-17T10:48:18+00:00",
           "kind": "edited",
           "payload": "estimate, session_label"
+        },
+        {
+          "at": "2026-10-17T10:49:28+00:00",
+          "kind": "attach",
+          "payload": "FB-4-board.png"
         }
       ],
       "id": "FB-4",
@@ -179,7 +191,7 @@
       "parent_id": null,
       "session_label": "вечер",
       "title": "UI: доска, карточка, drag&drop, Yaru Dark",
-      "updated_at": "2026-10-17T10:48:18+00:00"
+      "updated_at": "2026-10-17T10:49:28+00:00"
     },
     {
       "attachments": [],
@@ -208,7 +220,20 @@
       "updated_at": "2026-10-17T10:48:17+00:00"
     },
     {
-      "attachments": [],
+      "attachments": [
+        {
+          "added_at": "2026-10-17T10:49:30+00:00",
+          "name": "FB-6-attachments-live.png",
+          "path": "attachments/FB-6/FB-6-attachments-live.png",
+          "size": 184296
+        },
+        {
+          "added_at": "2026-10-17T10:49:28+00:00",
+          "name": "FB-6-attachments.png",
+          "path": "attachments/FB-6/FB-6-attachments.png",
+          "size": 104357
+        }
+      ],
       "closed_at": null,
       "column_id": "review",
       "created_at": "2026-10-17T10:48:11+00:00",
@@ -229,6 +254,16 @@
           "at": "2026-10-17T10:48:18+00:00",
           "kind": "edited",
           "payload": "estimate, session_label"
+        },
+        {
+          "at": "2026-10-17T10:49:28+00:00",
+          "kind": "attach",
+          "payload": "FB-6-attachments.png"
+        },
+        {
+          "at": "2026-10-17T10:49:30+00:00",
+          "kind": "attach",
+          "payload": "FB-6-attachments-live.png"
         }
       ],
       "id": "FB-6",
@@ -236,7 +271,7 @@
       "parent_id": null,
       "session_label": "ночь",
       "title": "Вложения: drag&drop и просмотр картинок в карточке",
-      "updated_at": "2026-10-17T10:48:18+00:00"
+      "updated_at": "2026-10-17T10:49:30+00:00"
     },
     {
       "attachments": [],
@@ -368,6 +403,55 @@
       "session_label": null,
       "title": "Отметить прочитанные коммиты как прочитанные",
       "updated_at": "2026-10-17T10:48:16+00:00"
+    },
+    {
+      "attachments": [
+        {
+          "added_at": "2026-10-17T10:49:28+00:00",
+          "name": "FB-13-after.png",
+          "path": "attachments/FB-13/FB-13-after.png",
+          "size": 104357
+        },
+        {
+          "added_at": "2026-10-17T10:49:27+00:00",
+          "name": "FB-13-before.png",
+          "path": "attachments/FB-13/FB-13-before.png",
+          "size": 112416
+        }
+      ],
+      "closed_at": null,
+      "column_id": "wip",
+      "created_at": "2026-10-17T10:48:36+00:00",
+      "description": "Саб-задача показывается и внутри родителя (вложенным списком), и отдельной карточкой в своей колонке. В Бэклоге FB-7 тянет на себя FB-9..FB-11 дважды.",
+      "estimate": 1.0,
+      "events": [
+        {
+          "at": "2026-10-17T10:48:36+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T10:48:36+00:00",
+          "kind": "moved",
+          "payload": "backlog → wip"
+        },
+        {
+          "at": "2026-10-17T10:49:27+00:00",
+          "kind": "attach",
+          "payload": "FB-13-before.png"
+        },
+        {
+          "at": "2026-10-17T10:49:28+00:00",
+          "kind": "attach",
+          "payload": "FB-13-after.png"
+        }
+      ],
+      "id": "FB-13",
+      "module_id": "0474d612",
+      "parent_id": null,
+      "session_label": null,
+      "title": "Баг UI: саб-задачи дублируются в колонке",
+      "updated_at": "2026-10-17T10:49:28+00:00"
     }
   ]
 }
