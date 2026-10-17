@@ -104,7 +104,22 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     default_repo: str | None = None
     cfg: dict | None = None      # конфиг машины: проекты, лимиты, порт
+    cfg_mtime: float | None = None
     quiet: bool = False  # тесты выключают, чтобы не мусорить в выводе
+
+    def config(self) -> dict:
+        """Конфиг машины на каждый раз: проект могли добавить из CLI или из
+        другой сессии пока доска открыта, и держать копию в памяти означало
+        бы «проекта не видно до перезапуска» (FB-23)."""
+        path = cfgmod.config_path()
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = None
+        if self.cfg is None or mtime != self.cfg_mtime:
+            self.cfg = cfgmod.load(path)
+            self.cfg_mtime = mtime
+        return self.cfg
 
     # ---- инфраструктура -------------------------------------------------
     def log_message(self, fmt: str, *args) -> None:  # тише обычного stderr
@@ -142,7 +157,7 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, f"тело запроса не JSON: {exc}") from exc
 
     def _read_body(self) -> bytes:
-        limit = upload_limit(self.cfg)
+        limit = upload_limit(self.config())
         length = int(self.headers.get("Content-Length") or 0)
         if length > limit:
             raise ApiError(413, f"файл больше лимита {limit // (1024 * 1024)} МБ")
@@ -213,26 +228,26 @@ class Handler(BaseHTTPRequestHandler):
     def _api_get(self, path: str, q: dict) -> None:
         if path == "/api/state":
             self._json({
-                "projects": (self.cfg or {}).get("projects", []),
+                "projects": (self.config()).get("projects", []),
                 "current": self.default_repo,
-                "config_path": (self.cfg or {}).get("_path"),
+                "config_path": (self.config()).get("_path"),
                 "version": __version__,
             })
             return
         if path == "/api/board":
-            self._json(board_payload(_project_repo(q.get("project"), self.default_repo, self.cfg)))
+            self._json(board_payload(_project_repo(q.get("project"), self.default_repo, self.config())))
             return
         if path == "/api/task":
-            repo = _project_repo(q.get("project"), self.default_repo, self.cfg)
+            repo = _project_repo(q.get("project"), self.default_repo, self.config())
             self._json(task_payload(repo, q.get("id", "")))
             return
         if path == "/api/commits":
-            repo = _project_repo(q.get("project"), self.default_repo, self.cfg)
+            repo = _project_repo(q.get("project"), self.default_repo, self.config())
             commits = gitlink.commits_for_task(repo, q.get("id", ""))
             self._json({"commits": commits})
             return
         if path == "/api/diff":
-            repo = _project_repo(q.get("project"), self.default_repo, self.cfg)
+            repo = _project_repo(q.get("project"), self.default_repo, self.config())
             rev = q.get("rev", "")
             if not rev:
                 raise ApiError(400, "нужен rev")
@@ -249,7 +264,7 @@ class Handler(BaseHTTPRequestHandler):
             # /api/attachments/<task-id>/<имя файла>
             tail = path[len("/api/attachments/"):]
             task_id, _, name = tail.partition("/")
-            self._send_attachment(_project_repo(q.get("project"), self.default_repo, self.cfg),
+            self._send_attachment(_project_repo(q.get("project"), self.default_repo, self.config()),
                                   task_id, name)
             return
         raise ApiError(404, f"нет такого маршрута: {path}")
@@ -273,7 +288,7 @@ class Handler(BaseHTTPRequestHandler):
     def _api_post(self, path: str, q: dict) -> None:
         if path == "/api/projects":
             return self._api_project(body=self._read_json())
-        repo = _project_repo(q.get("project"), self.default_repo, self.cfg)
+        repo = _project_repo(q.get("project"), self.default_repo, self.config())
         with _write_lock:
             data = load_board(repo)
             if path == "/api/tasks":
@@ -330,7 +345,7 @@ class Handler(BaseHTTPRequestHandler):
         """
         raw = body.get("path", "")
         with _write_lock:
-            cfg = self.cfg if self.cfg is not None else cfgmod.load()
+            cfg = self.config()
             result = repolib.attach(cfg, raw,
                                     project_id=(body.get("project_id") or "").strip() or None,
                                     name=(body.get("name") or "").strip() or None,
@@ -340,7 +355,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- PUT/PATCH ------------------------------------------------------
     def _api_update(self, path: str, q: dict) -> None:
-        repo = _project_repo(q.get("project"), self.default_repo, self.cfg)
+        repo = _project_repo(q.get("project"), self.default_repo, self.config())
         body = self._read_json()
         with _write_lock:
             data = load_board(repo)
@@ -363,7 +378,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- DELETE ---------------------------------------------------------
     def _api_delete(self, path: str, q: dict) -> None:
-        repo = _project_repo(q.get("project"), self.default_repo, self.cfg)
+        repo = _project_repo(q.get("project"), self.default_repo, self.config())
         with _write_lock:
             data = load_board(repo)
             if path.startswith("/api/tasks/"):
@@ -403,7 +418,7 @@ def serve(repo: str | None = None, host: str | None = None, port: int | None = N
     if Handler.default_repo:
         print(f"проект: {Handler.default_repo}")
     else:
-        print("проект не выбран — укажи в UI или --project")
+        print(f"проектов в конфиге: {len(cfg.get('projects', []))} — выбор в шапке доски")
     print("Ctrl+C — остановить")
     try:
         httpd.serve_forever()

@@ -12,6 +12,9 @@
     "max_upload_mb": 64
   },
 
+  "_default_project": "id проекта по умолчанию, чтобы не писать --project в каждой команде. Поставить: board.py config set default_project FB",
+  "default_project": null,
+
   "git": {
     "_comment": "сколько строк патча показывать до обрезки; дальше — честная пометка",
     "diff_max_lines": 4000
@@ -31,7 +34,7 @@
 
   "projects": [
     {
-      "_comment": "заполняется через ./board.py init или ./board.py config add-project; в репозиторий проекта не коммитится, потому что абсолютный путь — свойство машины",
+      "_comment": "заполняется через ./board.py projects add или config add-project; в репозиторий проекта не коммитится, потому что абсолютный путь — свойство машины",
       "id": "FB",
       "name": "FossilBoard",
       "repo_path": "/путь/к/репозиторию"

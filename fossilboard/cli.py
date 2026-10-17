@@ -14,8 +14,8 @@ from . import gitlink
 from .storage import (
     BoardError, add_module, add_task, attach_file, board_dir, board_path, column_name,
     delete_attachment, delete_module, delete_task, find_module, find_task, init_board,
-    load_board, move_task, resolve_column, save_board, subtasks, update_module,
-    update_task, wip_state,
+    load_board, move_task, resolve_column, save_board, subtasks,
+    update_module, update_task, wip_state,
 )
 
 EXIT_OK = 0
@@ -69,8 +69,11 @@ def resolve_repo(args: argparse.Namespace) -> str | None:
         return repo
     projects = cfg.get("projects", [])
     if projects:
-        ids = ", ".join(p["id"] for p in projects)
-        raise BoardError(f"проект не указан, в конфиге их несколько ({ids}) — добавь --project")
+        ids = [p["id"] for p in projects if isinstance(p, dict)]
+        hint = f"добавь --project {ids[0]}"
+        if not cfg.get("default_project") and len(ids) > 1:
+            hint += (f" (или один раз: board.py config set default_project {ids[0]})")
+        raise BoardError(f"проект не указан, в конфиге их несколько ({', '.join(ids)}) — {hint}")
     raise BoardError(
         "в конфиге нет проектов. Создать доску:\n"
         "  board.py init --id FB --name \"FossilBoard\" --repo <путь>"
@@ -313,7 +316,8 @@ def cmd_add(args: argparse.Namespace) -> int:
         module_id = mod["id"]
     task = add_task(data, args.title, description=args.desc or "", module_id=module_id,
                     parent_id=args.parent, estimate=args.estimate,
-                    session_label=args.session, column_id=args.column or "backlog")
+                    session_label=args.session, column_id=args.column or "backlog",
+                    explicit_id=args.id)
     save_board(repo, data)
     print(task["id"])
     return EXIT_OK
@@ -569,6 +573,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--session", help="метка сессии: вечер / ночь")
     s.add_argument("-e", "--estimate", type=float, help="оценка в часах")
     s.add_argument("--column", "-c", default="backlog")
+    s.add_argument("--id", dest="id", help="конкретный номер карточки (FB-12 или 12)")
     s.set_defaults(func=cmd_add)
 
     s = sub.add_parser("show", help="карточка + привязанные коммиты")

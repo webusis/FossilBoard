@@ -27,7 +27,7 @@
     }
   ],
   "counters": {
-    "task": 22
+    "task": 902
   },
   "modules": [
     {
@@ -1002,6 +1002,73 @@
       "session_label": null,
       "title": "Смена автора истории на Webusis и force-push",
       "updated_at": "2026-10-17T13:41:15+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": null,
+      "column_id": "wip",
+      "created_at": "2026-10-17T14:12:19+00:00",
+      "description": "Нашла при работе над планом FossilMiner: у команды edit есть только --title, --module, --estimate, --session, --parent. Флага для описания (-d/--desc) НЕТ, и задать конкретный ID при создании тоже нельзя. Итог: уточнить постановку задачи, не удаляя карточку, невозможно - приходится либо оставлять неверное описание, либо rm + add и получать новый номер со сдвигом всей нумерации. Что нужно: флаг --desc в edit, чтобы переписывать описание целиком или патчем; и опционально --id в add для восстановления карточки с прежним номером. Готово, когда: board.py edit MINER-3 --desc 'новый текст' работает, покрыт тестом, README обновлен.",
+      "estimate": 1.0,
+      "events": [
+        {
+          "at": "2026-10-17T14:12:19+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T14:14:56+00:00",
+          "kind": "moved",
+          "payload": "backlog → ready"
+        },
+        {
+          "at": "2026-10-17T14:15:07+00:00",
+          "kind": "moved",
+          "payload": "ready → wip"
+        },
+        {
+          "at": "2026-10-17T14:15:22+00:00",
+          "kind": "edited",
+          "payload": "title"
+        },
+        {
+          "at": "2026-10-17T14:18:48+00:00",
+          "kind": "edited",
+          "payload": "description"
+        },
+        {
+          "at": "2026-10-17T14:19:07+00:00",
+          "kind": "edited",
+          "payload": "description"
+        }
+      ],
+      "id": "FB-23",
+      "module_id": "03c77835",
+      "parent_id": null,
+      "session_label": null,
+      "title": "Правка FB-23: --desc в edit и --id в add",
+      "updated_at": "2026-10-17T14:19:07+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": null,
+      "column_id": "backlog",
+      "created_at": "2026-10-17T14:17:48+00:00",
+      "description": "",
+      "estimate": null,
+      "events": [
+        {
+          "at": "2026-10-17T14:17:48+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        }
+      ],
+      "id": "FB-901",
+      "module_id": null,
+      "parent_id": null,
+      "session_label": null,
+      "title": "Тест1",
+      "updated_at": "2026-10-17T14:17:48+00:00"
     }
   ]
 }

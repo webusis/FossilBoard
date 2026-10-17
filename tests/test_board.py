@@ -570,6 +570,30 @@ class TestCli(TempRepoCase):
         self.assertIn(str(elsewhere.resolve()), projects.stdout)
         self.assertNotIn(str(self.repo.resolve()), projects.stdout)
 
+
+    def test_cli_edit_desc(self):
+        """FB-23: описание переписывается флагом --desc."""
+        self.run_cli("add", "Через CLI")
+        proc = self.run_cli("edit", "K2C-1", "--desc", "новое описание из терминала")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(load_board(self.repo)["tasks"][0]["description"],
+                         "новое описание из терминала")
+
+
+    def test_cli_add_with_explicit_id(self):
+        """FB-23: карточка восстанавливается с прежним номером."""
+        proc = self.run_cli("add", "С номером", "--id", "42", "-d", "восстановленная")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout.strip(), "K2C-42")
+        self.assertEqual(load_board(self.repo)["tasks"][0]["id"], "K2C-42")
+
+
+    def test_cli_add_with_taken_id_refuses(self):
+        self.run_cli("add", "Первая")
+        dup = self.run_cli("add", "Вторая", "--id", "K2C-1")
+        self.assertEqual(dup.returncode, 1)
+        self.assertIn("уже есть", dup.stderr)
+
     def test_attach_cli_copies_file(self):
         self.run_cli("add", "Со скрином")
         src = Path(self.tmp) / "before.png"
@@ -588,6 +612,81 @@ class TestCli(TempRepoCase):
         self.assertIn("Вторая", self.run_cli("list", "--session", "вечер").stdout)
         self.assertIn("Вторая", self.run_cli("list", "-s", "вторая").stdout)
         self.assertEqual(self.run_cli("list", "-m", "нет-такого").returncode, 1)
+
+
+class TestExplicitTaskId(TempRepoCase):
+    """--id в add: восстановление карточки с прежним номером (FB-23)."""
+
+    def test_normalize_accepts_both_forms(self):
+        self.assertEqual(storage.normalize_task_id(self.data, "12"), "K2C-12")
+        self.assertEqual(storage.normalize_task_id(self.data, "K2C-12"), "K2C-12")
+        self.assertEqual(storage.normalize_task_id(self.data, "k2c-12"), "K2C-12")
+        self.assertEqual(storage.normalize_task_id(self.data, "007"), "K2C-7",
+                         "ведущие нули не плодят разные номера")
+
+    def test_normalize_rejects_foreign_prefix_and_garbage(self):
+        for bad in ("", "ZZZ-1", "K2C-abc", "K2C-", "просто текст"):
+            with self.assertRaises(BoardError, msg=f"{bad!r} должен отбиваться"):
+                storage.normalize_task_id(self.data, bad)
+
+    def test_reserve_moves_counter_forward(self):
+        taken = storage.reserve_task_id(self.data, "K2C-40")
+        self.assertEqual(taken, "K2C-40")
+        self.assertEqual(storage.next_task_id(self.data), "K2C-41",
+                         "счётчик обязан перепрыгнуть занятый номер, иначе будет дубль")
+
+    def test_reserve_refuses_existing(self):
+        add_task(self.data, "Первая")
+        with self.assertRaises(BoardError) as ctx:
+            storage.reserve_task_id(self.data, "K2C-1")
+        self.assertIn("уже есть", str(ctx.exception))
+
+    def test_add_with_explicit_id_via_cli(self):
+        task = add_task(self.data, "Восстановленная", explicit_id=None)
+        self.assertEqual(task["id"], "K2C-1")
+        again = add_task(self.data, "С номером", explicit_id="K2C-77")
+        self.assertEqual(again["id"], "K2C-77")
+        self.save()
+        ids = [t["id"] for t in load_board(self.repo)["tasks"]]
+        self.assertEqual(ids, ["K2C-1", "K2C-77"])
+        self.assertEqual(add_task(load_board(self.repo), "Проверка")["id"], "K2C-78")
+
+
+class TestEditDescription(TempRepoCase):
+    """FB-23: описание карточки должно переписываться на месте."""
+
+    def test_desc_flag_replaces_text(self):
+        task = self.new_task("Старая", description="было")
+        update_task(self.data, task["id"], {"description": "стало целиком"})
+        self.save()
+        self.assertEqual(load_board(self.repo)["tasks"][0]["description"], "стало целиком")
+
+    def test_desc_can_be_cleared(self):
+        task = self.new_task("С описанием", description="что-то")
+        update_task(self.data, task["id"], {"description": ""})
+        self.save()
+        self.assertEqual(load_board(self.repo)["tasks"][0]["description"], "")
+
+    def test_other_fields_do_not_touch_description(self):
+        task = self.new_task("Карточка", description="описание должно уцелеть")
+        update_task(self.data, task["id"], {"title": "Новое имя", "estimate": 3})
+        self.save()
+        fresh = load_board(self.repo)["tasks"][0]
+        self.assertEqual(fresh["title"], "Новое имя")
+        self.assertEqual(fresh["description"], "описание должно уцелеть")
+
+    def test_multiline_description_survives_roundtrip(self):
+        task = self.new_task("Многострочная")
+        text = "Первая строка\n\n- пункт\n- пункт\n\n```\nкод\n```"
+        update_task(self.data, task["id"], {"description": text})
+        self.save()
+        self.assertEqual(load_board(self.repo)["tasks"][0]["description"], text)
+
+    def test_edit_keeps_description_without_desc_flag(self):
+        task = self.new_task("Заголовок", description="не трогать")
+        update_task(self.data, task["id"], {"module_id": None})
+        self.save()
+        self.assertEqual(load_board(self.repo)["tasks"][0]["description"], "не трогать")
 
 
 class TestOrdering(TempRepoCase):
@@ -915,8 +1014,13 @@ class TestConfigLookup(TempRepoCase):
         self.assertEqual(merged["server"]["port"], 8770)
         # и в записанный конфиг подчёркнутые ключи тоже не попадают
         saved = {k: v for k, v in merged.items() if not k.startswith("_")}
-        self.assertEqual(sorted(saved), ["attachments", "git", "paths", "projects",
-                                        "server", "ui", "version"])
+        self.assertEqual(sorted(saved), ["attachments", "default_project", "git", "paths",
+                                        "projects", "server", "ui", "version"])
+        self.assertTrue([k for k in data if k.startswith("_")],
+                        "в шаблоне есть комментарии")
+        for key in data:
+            if key.startswith("_"):
+                self.assertNotIn(key, saved, f"комментарий {key} не должен попасть в данные")
 
     def test_config_init_writes_local_file_from_values(self):
         env = dict(self.cli_env(), FOSSILBOARD_CONFIG=str(self.tmp / "empty.json"))
@@ -1117,6 +1221,11 @@ class TestRepoApi(TempRepoCase):
         self.Handler.default_repo = str(self.repo)
         self.Handler.cfg = config_mod.load(self.cfg_path)
         self.Handler.quiet = True
+        # сервер перечитывает конфиг по требованию — значит, из окружения теста,
+        # а не из боевого ~/.config/fossilboard
+        self._env = mock.patch.dict(os.environ, {"FOSSILBOARD_CONFIG": str(self.cfg_path)})
+        self._env.start()
+        self.Handler.cfg = None  # пусть перечитает из своего окружения
         import threading
         from http.server import ThreadingHTTPServer
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), self.Handler)
@@ -1126,6 +1235,7 @@ class TestRepoApi(TempRepoCase):
         self.base = f"http://127.0.0.1:{self.port}"
 
     def tearDown(self):
+        self._env.stop()
         self.httpd.shutdown()
         self.httpd.server_close()
         super().tearDown()
@@ -1193,6 +1303,41 @@ class TestRepoApi(TempRepoCase):
         status, data = self.post(self.base + "/api/projects", {"path": str(target)})
         self.assertEqual(status, 400)
         self.assertIn("board.py init", data["error"])
+
+    def test_config_changes_are_picked_up_without_restart(self):
+        """Проект, добавленный в конфиг при работающей доске, должен появляться.
+
+        Регрессия (FB-23): сервер держал копию конфига в памяти, и проект,
+        добавленный из CLI или из другой сессии, был не виден до перезапуска.
+        """
+        second = self.tmp / "miner"
+        second.mkdir()
+        git(second, "init", "-q")
+        init_board(second, "MINER", "FossilMiner")
+
+        _, before = self.get(self.base + "/api/state")
+        self.assertNotIn("MINER", [p["id"] for p in before["projects"]])
+
+        cfg = config_mod.load(self.cfg_path)
+        config_mod.upsert_project(cfg, "MINER", "FossilMiner", str(second))
+        config_mod.save(cfg, self.cfg_path)
+
+        _, after = self.get(self.base + "/api/state")
+        self.assertIn("MINER", [p["id"] for p in after["projects"]],
+                      "конфиг перечитывается, а не кэшируется навсегда")
+        _, board = self.get(self.base + "/api/board?project=MINER")
+        self.assertEqual(board["project"]["id"], "MINER")
+
+    def test_removed_project_disappears_from_state(self):
+        cfg = config_mod.load(self.cfg_path)
+        config_mod.upsert_project(cfg, "GONE", "Исчезающий", str(self.tmp))
+        config_mod.save(cfg, self.cfg_path)
+        _, state = self.get(self.base + "/api/state")
+        self.assertIn("GONE", [p["id"] for p in state["projects"]])
+        config_mod.remove_project(cfg, "GONE")
+        config_mod.save(cfg, self.cfg_path)
+        _, state = self.get(self.base + "/api/state")
+        self.assertNotIn("GONE", [p["id"] for p in state["projects"]])
 
     def test_browse_endpoint(self):
         (self.tmp / "idea").mkdir()
@@ -1263,6 +1408,81 @@ class TestWebMarkup(TempRepoCase):
         html = (web / "index.html").read_text(encoding="utf-8")
         self.assertNotIn("cdn.", html)
         self.assertNotIn("fonts.googleapis", html)
+
+
+class TestExplicitTaskId(TempRepoCase):
+    """--id в add: восстановление карточки с прежним номером (FB-23)."""
+
+    def test_normalize_accepts_both_forms(self):
+        self.assertEqual(storage.normalize_task_id(self.data, "12"), "K2C-12")
+        self.assertEqual(storage.normalize_task_id(self.data, "K2C-12"), "K2C-12")
+        self.assertEqual(storage.normalize_task_id(self.data, "k2c-12"), "K2C-12")
+        self.assertEqual(storage.normalize_task_id(self.data, "007"), "K2C-7",
+                         "ведущие нули не плодят разные номера")
+
+    def test_normalize_rejects_foreign_prefix_and_garbage(self):
+        for bad in ("", "ZZZ-1", "K2C-abc", "K2C-", "просто текст"):
+            with self.assertRaises(BoardError, msg=f"{bad!r} должен отбиваться"):
+                storage.normalize_task_id(self.data, bad)
+
+    def test_reserve_moves_counter_forward(self):
+        taken = storage.reserve_task_id(self.data, "K2C-40")
+        self.assertEqual(taken, "K2C-40")
+        self.assertEqual(storage.next_task_id(self.data), "K2C-41",
+                         "счётчик обязан перепрыгнуть занятый номер, иначе будет дубль")
+
+    def test_reserve_refuses_existing(self):
+        add_task(self.data, "Первая")
+        with self.assertRaises(BoardError) as ctx:
+            storage.reserve_task_id(self.data, "K2C-1")
+        self.assertIn("уже есть", str(ctx.exception))
+
+    def test_add_with_explicit_id_via_cli(self):
+        task = add_task(self.data, "Восстановленная", explicit_id=None)
+        self.assertEqual(task["id"], "K2C-1")
+        again = add_task(self.data, "С номером", explicit_id="K2C-77")
+        self.assertEqual(again["id"], "K2C-77")
+        self.save()
+        ids = [t["id"] for t in load_board(self.repo)["tasks"]]
+        self.assertEqual(ids, ["K2C-1", "K2C-77"])
+        self.assertEqual(add_task(load_board(self.repo), "Проверка")["id"], "K2C-78")
+
+
+class TestEditDescription(TempRepoCase):
+    """FB-23: описание карточки должно переписываться на месте."""
+
+    def test_desc_flag_replaces_text(self):
+        task = self.new_task("Старая", description="было")
+        update_task(self.data, task["id"], {"description": "стало целиком"})
+        self.save()
+        self.assertEqual(load_board(self.repo)["tasks"][0]["description"], "стало целиком")
+
+    def test_desc_can_be_cleared(self):
+        task = self.new_task("С описанием", description="что-то")
+        update_task(self.data, task["id"], {"description": ""})
+        self.save()
+        self.assertEqual(load_board(self.repo)["tasks"][0]["description"], "")
+
+    def test_other_fields_do_not_touch_description(self):
+        task = self.new_task("Карточка", description="описание должно уцелеть")
+        update_task(self.data, task["id"], {"title": "Новое имя", "estimate": 3})
+        self.save()
+        fresh = load_board(self.repo)["tasks"][0]
+        self.assertEqual(fresh["title"], "Новое имя")
+        self.assertEqual(fresh["description"], "описание должно уцелеть")
+
+    def test_multiline_description_survives_roundtrip(self):
+        task = self.new_task("Многострочная")
+        text = "Первая строка\n\n- пункт\n- пункт\n\n```\nкод\n```"
+        update_task(self.data, task["id"], {"description": text})
+        self.save()
+        self.assertEqual(load_board(self.repo)["tasks"][0]["description"], text)
+
+    def test_edit_keeps_description_without_desc_flag(self):
+        task = self.new_task("Заголовок", description="не трогать")
+        update_task(self.data, task["id"], {"module_id": None})
+        self.save()
+        self.assertEqual(load_board(self.repo)["tasks"][0]["description"], "не трогать")
 
 
 if __name__ == "__main__":

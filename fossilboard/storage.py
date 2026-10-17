@@ -200,8 +200,7 @@ def subtasks(data: dict, parent_id: str) -> list[dict]:
 
 def next_task_id(data: dict) -> str:
     """Номер только растёт: удалённая карточка не отдаёт свой ID обратно."""
-    prefix = data.get("project", {}).get("config", {}).get("task_prefix") \
-        or data.get("project", {}).get("id") or "TASK"
+    prefix = task_prefix(data)
     counters = data.setdefault("counters", {})
     n = int(counters.get("task", 0)) + 1
     counters["task"] = n
@@ -251,9 +250,45 @@ def add_event(task: dict, kind: str, payload: str = "") -> None:
     task.setdefault("events", []).append({"at": now_iso(), "kind": kind, "payload": payload})
 
 
+def task_prefix(data: dict) -> str:
+    return (data.get("project", {}).get("config", {}).get("task_prefix")
+            or data.get("project", {}).get("id") or "TASK")
+
+
+def normalize_task_id(data: dict, raw: str) -> str:
+    """«12» и «FB-12» → «FB-12». Префикс всегда от проекта, не от ввода."""
+    prefix = task_prefix(data)
+    value = (raw or "").strip().upper()
+    if not value:
+        raise BoardError("не указан номер карточки")
+    if value.isdigit():
+        return f"{prefix}-{int(value)}"          # без ведущих нулей: 007 → 7
+    if not value.startswith(prefix + "-"):
+        raise BoardError(f"номер должен начинаться с префикса проекта: {prefix}-N")
+    tail = value[len(prefix) + 1:]
+    if not tail.isdigit():
+        raise BoardError(f"в номере карточки ожидаются цифры: {prefix}-N, а не «{raw}»")
+    return f"{prefix}-{int(tail)}"
+
+
+def reserve_task_id(data: dict, raw: str) -> str:
+    """Занять конкретный номер: занять нельзя, если он уже есть.
+
+    Счётчик подтягивается вперёд, иначе следующая автоматическая карточка
+    получила бы номер уже занятой.
+    """
+    wanted = normalize_task_id(data, raw)
+    if find_task(data, wanted) is not None:
+        raise BoardError(f"карточка {wanted} уже есть")
+    counters = data.setdefault("counters", {})
+    counters["task"] = max(int(counters.get("task", 0)), task_num(wanted))
+    return wanted
+
+
 def add_task(data: dict, title: str, *, description: str = "", module_id: str | None = None,
              parent_id: str | None = None, estimate: float | None = None,
-             session_label: str | None = None, column_id: str = "backlog") -> dict:
+             session_label: str | None = None, column_id: str = "backlog",
+             explicit_id: str | None = None) -> dict:
     title = (title or "").strip()
     if not title:
         raise BoardError("у задачи должен быть заголовок")
@@ -263,9 +298,13 @@ def add_task(data: dict, title: str, *, description: str = "", module_id: str | 
         get_task(data, parent_id)  # родитель обязан существовать
     if module_id and not find_module(data, module_id):
         raise BoardError(f"нет модуля «{module_id}»")
+    # конкретный номер проверяем и резервируем здесь же: иначе вызов в обход
+    # CLI создал бы карточку K2C-77, не подвинув счётчик, и следующая была бы
+    # бы с тем же номером
+    wanted = reserve_task_id(data, explicit_id) if explicit_id else next_task_id(data)
     stamp = now_iso()
     task = {
-        "id": next_task_id(data),
+        "id": wanted,
         "title": title,
         "description": description or "",
         "column_id": column_id,

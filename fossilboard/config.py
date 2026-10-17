@@ -55,6 +55,7 @@ DEFAULTS = {
         "scratch": "/tmp/fossilboard",
         "logs": "~/.local/state/fossilboard/logs",
     },
+    "default_project": None,   # id проекта без --project: board.py config set default_project FB
     "projects": [],
 }
 
@@ -222,13 +223,17 @@ def default_project(cfg: dict) -> dict | None:
 
 
 def resolve_repo(cfg: dict, repo: str | None = None, ref: str | None = None) -> str | None:
-    """--repo → FOSSILBOARD_REPO → --project/FOSSILBOARD_PROJECT → единственный проект."""
+    """--repo → FOSSILBOARD_REPO → --project/FOSSILBOARD_PROJECT →
+    default_project из конфига → единственный проект."""
     if repo:
         return str(Path(repo).expanduser().resolve())
     env_repo = os.environ.get("FOSSILBOARD_REPO")
     if env_repo:
         return str(Path(env_repo).expanduser().resolve())
     proj = project(cfg, ref or os.environ.get("FOSSILBOARD_PROJECT"))
+    if proj:
+        return str(Path(proj["repo_path"]).expanduser().resolve())
+    proj = project(cfg, cfg.get("default_project"))
     if proj:
         return str(Path(proj["repo_path"]).expanduser().resolve())
     only = default_project(cfg)
