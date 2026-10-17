@@ -974,8 +974,8 @@
     },
     {
       "attachments": [],
-      "closed_at": null,
-      "column_id": "wip",
+      "closed_at": "2026-10-17T13:41:15+00:00",
+      "column_id": "done",
       "created_at": "2026-10-17T13:39:17+00:00",
       "description": "Локальный git-пользователь репозитория переведён на Webusis <webusis@gmail.com>, вся история переписана через rebase --root с --reset-author, чтобы ни один старый коммит не остался с прежним автором. Публикация — force-with-lease, чтобы не затереть чужое.",
       "estimate": 0.5,
@@ -989,6 +989,11 @@
           "at": "2026-10-17T13:39:17+00:00",
           "kind": "moved",
           "payload": "backlog → wip"
+        },
+        {
+          "at": "2026-10-17T13:41:15+00:00",
+          "kind": "closed",
+          "payload": ""
         }
       ],
       "id": "FB-22",
@@ -996,7 +1001,7 @@
       "parent_id": null,
       "session_label": null,
       "title": "Смена автора истории на Webusis и force-push",
-      "updated_at": "2026-10-17T13:39:17+00:00"
+      "updated_at": "2026-10-17T13:41:15+00:00"
     }
   ]
 }
