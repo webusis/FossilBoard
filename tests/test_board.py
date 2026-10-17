@@ -787,5 +787,78 @@ class TestCliConfig(TempRepoCase):
                 del os.environ["FOSSILBOARD_PORT"]
 
 
+class TestConfigLookup(TempRepoCase):
+    """Где доска ищет конфиг: env → ./config.json → ~/.config → умолчания."""
+
+    prefix = "FB"
+    board_name = "FossilBoard"
+
+    def setUp(self):
+        super().setUp()
+        self.work = self.tmp / "project"
+        self.work.mkdir()
+
+    def test_template_ships_with_the_repo(self):
+        tpl = config_mod.template_path()
+        self.assertTrue(tpl.is_file(), f"шаблон должен лежать в репозитории: {tpl}")
+        data = json.loads(tpl.read_text(encoding="utf-8"))
+        self.assertIn("server", data)
+        self.assertIn("_comment", data, "в шаблоне должны быть пояснения")
+
+    def test_local_config_wins_over_home(self):
+        with mock.patch.dict(os.environ, {"HOME": str(self.tmp / "home")}, clear=False):
+            home = config_mod.user_config_path()
+            home.parent.mkdir(parents=True, exist_ok=True)
+            home.write_text(json.dumps({"server": {"port": 1111}}), encoding="utf-8")
+            local = self.work / "config.json"
+            local.write_text(json.dumps({"server": {"port": 2222}}), encoding="utf-8")
+            with mock.patch.object(Path, "cwd", return_value=self.work):
+                self.assertEqual(config_mod.config_path(), local.resolve(),
+                                 "конфиг рядом с доской важнее общесистемного")
+            local.unlink()
+            with mock.patch.object(Path, "cwd", return_value=self.work):
+                self.assertEqual(config_mod.config_path(), home,
+                                 "без локального берётся общесистемный")
+
+    def test_env_path_wins_over_everything(self):
+        custom = self.tmp / "custom.json"
+        custom.write_text(json.dumps({"server": {"port": 3333}}), encoding="utf-8")
+        local = self.work / "config.json"
+        local.write_text(json.dumps({"server": {"port": 2222}}), encoding="utf-8")
+        with mock.patch.dict(os.environ, {"FOSSILBOARD_CONFIG": str(custom)}):
+            with mock.patch.object(Path, "cwd", return_value=self.work):
+                self.assertEqual(config_mod.config_path(), custom.resolve())
+
+    def test_comments_from_template_do_not_leak_into_data(self):
+        raw = config_mod.template_path().read_text(encoding="utf-8")
+        data = json.loads(raw)
+        data["projects"] = []          # шаблон содержит пример проекта
+        merged = config_mod._deep_merge(config_mod.defaults(), data)
+        # в данных остаются только наши служебные ключи, комментарии не проходят
+        self.assertEqual([k for k in merged if k.startswith("_")], ["_path", "_exists"])
+        self.assertNotIn("_comment", merged)
+        self.assertEqual(merged["server"]["port"], 8770)
+        # и в записанный конфиг подчёркнутые ключи тоже не попадают
+        saved = {k: v for k, v in merged.items() if not k.startswith("_")}
+        self.assertEqual(sorted(saved), ["attachments", "git", "paths", "projects",
+                                        "server", "ui", "version"])
+
+    def test_config_init_writes_local_file_from_values(self):
+        env = dict(self.cli_env(), FOSSILBOARD_CONFIG=str(self.tmp / "empty.json"))
+        proc = subprocess.run(["python3", str(REPO_ROOT / "board.py"), "config", "init"],
+                              capture_output=True, text=True, env=env, cwd=str(self.work))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        created = self.work / "config.json"
+        self.assertTrue(created.is_file())
+        self.assertIn("конфиг создан", proc.stdout)
+        self.assertIn(str(created), proc.stdout)
+        self.assertEqual(json.loads(created.read_text(encoding="utf-8"))["server"]["port"], 8770)
+        # второй раз не затираем молча
+        again = subprocess.run(["python3", str(REPO_ROOT / "board.py"), "config", "init"],
+                               capture_output=True, text=True, env=env, cwd=str(self.work))
+        self.assertEqual(again.returncode, 1)
+        self.assertIn("уже есть", again.stderr)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1,15 +1,18 @@
 """Конфигурация FossilBoard: пути, проекты, параметры сервера.
 
-Лежит вне репозиториев — в XDG-каталоге пользователя:
+Шаблон лежит в репозитории рядом с board.py — `config.example.json`.
+Рабочий конфиг ищется в таком порядке:
 
-    ~/.config/fossilboard/config.json
+    1. $FOSSILBOARD_CONFIG               — прямой путь к файлу
+    2. ./config.json                     — рядом с доской, в репозитории проекта
+    3. ~/.config/fossilboard/config.json — общесистемный, для всех досок сразу
+    4. значения по умолчанию
 
-Почему не в репе: пути к репам и домашние каталоги — это свойство машины,
-а не проекта. Плюс `.board/projects.json` в git означал бы, что клон на чужом
-компьютере смотрит в чужой каталог.
+Шаблон объясняет каждое поле, а рабочий конфиг кладётся в репозиторий проекта:
+доска одна, настроек немного, и ехать им лучше вместе с проектом.
 
-Приоритеты (по возрастанию):
-    значения по умолчанию → config.json → переменные окружения → флаги CLI
+Приоритеты поверх любого файла (по возрастанию):
+    флаг CLI → переменная окружения → конфиг → значения по умолчанию
 
 Переменные окружения:
     FOSSILBOARD_CONFIG   другой путь к конфигу
@@ -28,6 +31,8 @@ from pathlib import Path
 
 CONFIG_VERSION = 1
 APP_NAME = "fossilboard"
+TEMPLATE_NAME = "config.example.json"
+LOCAL_NAME = "config.json"
 
 DEFAULTS = {
     "version": CONFIG_VERSION,
@@ -58,12 +63,52 @@ class ConfigError(Exception):
     pass
 
 
-def config_path() -> Path:
+def user_config_path() -> Path:
+    """Общесистемный конфиг: ~/.config/fossilboard/config.json."""
+    xdg = os.environ.get("XDG_CONFIG_HOME") or "~/.config"
+    return Path(xdg).expanduser() / APP_NAME / LOCAL_NAME
+
+
+def local_config_path(start: str | Path | None = None) -> Path:
+    """Конфиг рядом с доской: ./config.json в корне репозитория."""
+    return Path(start or Path.cwd()) / LOCAL_NAME
+
+
+def template_path() -> Path:
+    """Шаблон из репозитория FossilBoard — лежит рядом с board.py."""
+    try:
+        from .storage import tool_root
+        return tool_root() / TEMPLATE_NAME
+    except Exception:  # pragma: no cover
+        return Path(__file__).resolve().parent.parent / TEMPLATE_NAME
+
+
+def config_path(start: str | Path | None = None) -> Path:
+    """Куда писать конфиг: путь из окружения → локальный → общесистемный.
+
+    Возвращает первый существующий; если не существует ни один — локальный,
+    потому что конфиг логично коммитить вместе с проектом.
+    """
     override = os.environ.get("FOSSILBOARD_CONFIG")
     if override:
         return Path(override).expanduser().resolve()
-    xdg = os.environ.get("XDG_CONFIG_HOME") or "~/.config"
-    return Path(xdg).expanduser() / APP_NAME / "config.json"
+    local = local_config_path(start)
+    if local.is_file():
+        return local.resolve()
+    home = user_config_path()
+    if home.is_file():
+        return home
+    return local
+
+
+def candidate_paths(start: str | Path | None = None) -> list[Path]:
+    """Все места, откуда читается конфиг, — для сообщений пользователю."""
+    out = []
+    if os.environ.get("FOSSILBOARD_CONFIG"):
+        out.append(Path(os.environ["FOSSILBOARD_CONFIG"]).expanduser())
+    out.append(local_config_path(start))
+    out.append(user_config_path())
+    return out
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -72,6 +117,8 @@ def _deep_merge(base: dict, override: dict) -> dict:
     # а проекты «появлялись» у всех следующих вызовов подряд
     out = copy.deepcopy(base)
     for key, value in (override or {}).items():
+        if key.startswith("_"):       # комментарии из шаблона в данные не превращаем
+            continue
         if isinstance(value, dict) and isinstance(out.get(key), dict):
             out[key] = _deep_merge(out[key], value)
         else:

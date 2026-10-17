@@ -1,0 +1,40 @@
+{
+  "_comment": "Шаблон конфигурации FossilBoard. Скопируй рядом с board.py как config.json и правь под себя: ./board.py config init сделает это сам. Приоритет: флаг CLI → переменная окружения → ./config.json → ~/.config/fossilboard/config.json → значения ниже. Ключи с подчёркиванием — служебные комментарии, они игнорируются.",
+
+  "server": {
+    "_comment": "serve слушает 0.0.0.0, чтобы доска открывалась с телефона в той же сети",
+    "host": "0.0.0.0",
+    "port": 8770
+  },
+
+  "attachments": {
+    "_comment": "лимит одной загрузки, МБ; скриншоты доски обычно весят сотни килобайт",
+    "max_upload_mb": 64
+  },
+
+  "git": {
+    "_comment": "сколько строк патча показывать до обрезки; дальше — честная пометка",
+    "diff_max_lines": 4000
+  },
+
+  "ui": {
+    "_comment": "тема только тёмная: Yaru Dark, переключателя нет и не планируется",
+    "theme": "dark",
+    "default_session": null
+  },
+
+  "paths": {
+    "_comment": "черновики и неотсортированные скриншоты; логи и отчёты прогонов",
+    "scratch": "/tmp/fossilboard",
+    "logs": "~/.local/state/fossilboard/logs"
+  },
+
+  "projects": [
+    {
+      "_comment": "заполняется через ./board.py init или ./board.py config add-project; в репозиторий проекта не коммитится, потому что абсолютный путь — свойство машины",
+      "id": "FB",
+      "name": "FossilBoard",
+      "repo_path": "/путь/к/репозиторию"
+    }
+  ]
+}

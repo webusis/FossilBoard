@@ -31,8 +31,8 @@
 ## Быстрый старт
 
 ```bash
-git clone git@github.com:webusis/FissilBoard.git
-cd FissilBoard
+git clone git@github.com:webusis/FossilBoard.git
+cd FossilBoard
 
 ./board.py init --id FB --name "FossilBoard" --repo "$PWD"   # доска для этой репы
 ./board.py module add "ядро" --color '#E95420'              # модуль (саб-проект)
@@ -103,14 +103,29 @@ cd FissilBoard
 
 ## Конфигурация
 
-Пути и параметры живут **не в репозитории, а в конфиге машины**:
+Настройки лежат **в проекте**: `./board.py config init` создаёт `config.json`
+рядом с `board.py`, и его можно коммитить — настройки поедут вместе с проектом.
+В репозитории рядом лежит **шаблон** `config.example.json` с пояснением каждого поля.
 
-```
-~/.config/fossilboard/config.json
+```bash
+./board.py config                    # посмотреть действующий конфиг
+./board.py config where              # где доска ищет конфиг и в каком порядке
+./board.py config init               # создать ./config.json из значений по умолчанию
+./board.py config template           # скопировать config.example.json к себе
+./board.py config set server.port 9000
+./board.py config add-project FB "FossilBoard" --repo ~/projects/FossilBoard
+./board.py config rm-project FB
+./board.py config path               # какой файл сейчас используется
 ```
 
-Путь к репе — это свойство твоего компьютера, а не проекта: держать его в git
-значило бы, что клон на чужой машине смотрит в чужой каталог.
+Доску ищет так — первое существующее и выигрывает:
+
+| # | Где | Комментарий |
+|---|---|---|
+| 1 | `$FOSSILBOARD_CONFIG` | прямой путь к файлу |
+| 2 | `./config.json` | рядом с доской, в репозитории — можно коммитить |
+| 3 | `~/.config/fossilboard/config.json` | общесистемный, на случай нескольких досок |
+| 4 | значения по умолчанию | когда файлов нет вообще |
 
 ```jsonc
 {
@@ -123,28 +138,16 @@ cd FissilBoard
     "logs":    "~/.local/state/fossilboard/logs" // логи и отчёты
   },
   "projects": [
-    { "id": "FB", "name": "FossilBoard", "repo_path": "/home/user/projects/FissilBoard" }
+    { "id": "FB", "name": "FossilBoard", "repo_path": "/home/user/projects/FossilBoard" }
   ]
 }
 ```
 
-```bash
-./board.py config                       # показать текущий конфиг
-./board.py config path                  # где он лежит
-./board.py config set server.port 9000  # поменять параметр
-./board.py config add-project FB "FossilBoard" --repo ~/projects/FissilBoard
-./board.py config rm-project FB
-```
+Секция `projects` — единственное, что обычно **не коммитят**: абсолютный путь к
+репе — свойство машины. Всё остальное к доске природа велит держать в репозитории.
 
-Приоритет настроек: **флаг CLI → переменная окружения → конфиг → умолчание.**
-
-| Переменная окружения | Что перекрывает |
-|---|---|
-| `FOSSILBOARD_CONFIG` | путь к самому конфигу |
-| `FOSSILBOARD_REPO` | репозиторий по умолчанию (как `--repo`) |
-| `FOSSILBOARD_PROJECT` | проект по умолчанию (как `--project`) |
-| `FOSSILBOARD_PORT`, `FOSSILBOARD_HOST` | адрес сервера |
-
+Поверх файла действуют **флаги CLI и переменные окружения**:
+`FOSSILBOARD_PORT`, `FOSSILBOARD_HOST`, `FOSSILBOARD_REPO`, `FOSSILBOARD_PROJECT`.
 Битый конфиг не превращается в отказ работать: доска скажет, где ошибка, и
 продолжит на значениях по умолчанию.
 
@@ -166,7 +169,7 @@ git commit -m "FB-12: разбор сохранений"   # → коммит п
 ## Как это устроено
 
 ```
-FissilBoard/
+FossilBoard/
 ├── board.py                  точка входа CLI
 ├── fossilboard/
 │   ├── config.py             конфиг машины: пути, проекты, приоритеты настроек

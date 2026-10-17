@@ -168,14 +168,35 @@ def cmd_projects(args: argparse.Namespace) -> int:
 
 
 def cmd_config(args: argparse.Namespace) -> int:
-    """Показать, создать или поправить конфиг машины."""
+    """Показать, создать или поправить конфиг. По умолчанию — в проекте."""
     cfg = get_config()
     if args.config_cmd == "path":
         print(cfg["_path"])
         return EXIT_OK
+    if args.config_cmd == "where":
+        print("конфиг ищется в таком порядке:")
+        for cand in cfgmod.candidate_paths():
+            mark = "← используется" if str(cand) == cfg["_path"] else (
+                "" if cand.is_file() else "(нет файла)")
+            print(f"  {cand}  {mark}")
+        print(f"шаблон: {cfgmod.template_path()}")
+        return EXIT_OK
     if args.config_cmd == "init":
-        path = cfgmod.save(cfg)
-        print(f"конфиг создан: {path}")
+        target = Path(args.path).expanduser() if args.path else cfgmod.local_config_path()
+        if target.exists():
+            return die(f"уже есть: {target}")
+        cfgmod.save(cfg, target)
+        print(f"конфиг создан: {target}")
+        print(f"шаблон с пояснениями: {cfgmod.template_path()}")
+        print("этот файл можно коммитить вместе с проектом — настройки поедут с ним")
+        return EXIT_OK
+    if args.config_cmd == "template":
+        target = Path(args.path).expanduser() if args.path else Path.cwd() / cfgmod.TEMPLATE_NAME
+        src = cfgmod.template_path()
+        if not src.is_file():
+            return die(f"шаблон не найден в репозитории: {src}")
+        target.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+        print(f"шаблон скопирован: {src} → {target}")
         return EXIT_OK
     if args.config_cmd == "set":
         if not args.key:
@@ -448,11 +469,17 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("projects", help="проекты из конфига")
     s.set_defaults(func=cmd_projects)
 
-    s = sub.add_parser("config", help="конфиг машины: пути, проекты, порт")
+    s = sub.add_parser("config", help="конфиг: пути, проекты, порт")
     csub = s.add_subparsers(dest="config_cmd")
-    cs = csub.add_parser("path", help="где лежит конфиг")
+    cs = csub.add_parser("path", help="какой конфиг сейчас используется")
     cs.set_defaults(func=cmd_config)
-    cs = csub.add_parser("init", help="создать конфиг со значениями по умолчанию")
+    cs = csub.add_parser("where", help="где доска ищет конфиг и в каком порядке")
+    cs.set_defaults(func=cmd_config)
+    cs = csub.add_parser("init", help="создать config.json в текущем каталоге")
+    cs.add_argument("--path", help="куда создать (по умолчанию ./config.json)")
+    cs.set_defaults(func=cmd_config)
+    cs = csub.add_parser("template", help="скопировать config.example.json рядом с собой")
+    cs.add_argument("--path", help="куда скопировать (по умолчанию ./config.example.json)")
     cs.set_defaults(func=cmd_config)
     cs = csub.add_parser("set", help="изменить параметр: server.port 9000")
     cs.add_argument("key")
