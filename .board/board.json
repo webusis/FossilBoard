@@ -1,0 +1,373 @@
+{
+  "columns": [
+    {
+      "id": "backlog",
+      "name": "Бэклог",
+      "wip_limit": null
+    },
+    {
+      "id": "ready",
+      "name": "К сессии",
+      "wip_limit": null
+    },
+    {
+      "id": "wip",
+      "name": "В работе",
+      "wip_limit": 2
+    },
+    {
+      "id": "review",
+      "name": "Ревью",
+      "wip_limit": null
+    },
+    {
+      "id": "done",
+      "name": "Готово",
+      "wip_limit": null
+    }
+  ],
+  "counters": {
+    "task": 12
+  },
+  "modules": [
+    {
+      "color": "#E95420",
+      "description": "",
+      "id": "03c77835",
+      "name": "ядро"
+    },
+    {
+      "color": "#19B6EE",
+      "description": "",
+      "id": "0474d612",
+      "name": "ui"
+    },
+    {
+      "color": "#77216F",
+      "description": "",
+      "id": "2552329a",
+      "name": "git"
+    },
+    {
+      "color": "#88ccee",
+      "description": "",
+      "id": "1e415607",
+      "name": "docs"
+    },
+    {
+      "color": "#4C9A2A",
+      "description": "",
+      "id": "e5b68142",
+      "name": "tests"
+    }
+  ],
+  "project": {
+    "config": {
+      "task_prefix": "FB"
+    },
+    "created_at": "2026-10-17T10:48:04+00:00",
+    "id": "FB",
+    "name": "FossilBoard",
+    "repo_path": "/home/dipsi/projects/FossilBoard"
+  },
+  "schema_version": 1,
+  "tasks": [
+    {
+      "attachments": [],
+      "closed_at": "2026-10-17T10:48:16+00:00",
+      "column_id": "done",
+      "created_at": "2026-10-17T10:48:10+00:00",
+      "description": "board.json как единственный источник правды, запись через временный файл + os.replace, ключи сортированы ради читаемого diff.",
+      "estimate": 2.0,
+      "events": [
+        {
+          "at": "2026-10-17T10:48:10+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T10:48:16+00:00",
+          "kind": "closed",
+          "payload": ""
+        }
+      ],
+      "id": "FB-1",
+      "module_id": "03c77835",
+      "parent_id": null,
+      "session_label": null,
+      "title": "Ядро: модель данных и атомарная запись",
+      "updated_at": "2026-10-17T10:48:16+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": "2026-10-17T10:48:16+00:00",
+      "column_id": "done",
+      "created_at": "2026-10-17T10:48:10+00:00",
+      "description": "init/list/add/show/move/edit/done/rm/attach/module/serve — работа без браузера, коды выхода 0/1.",
+      "estimate": null,
+      "events": [
+        {
+          "at": "2026-10-17T10:48:10+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T10:48:16+00:00",
+          "kind": "closed",
+          "payload": ""
+        }
+      ],
+      "id": "FB-2",
+      "module_id": "03c77835",
+      "parent_id": null,
+      "session_label": null,
+      "title": "CLI: полный набор команд доски",
+      "updated_at": "2026-10-17T10:48:16+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": "2026-10-17T10:48:16+00:00",
+      "column_id": "done",
+      "created_at": "2026-10-17T10:48:11+00:00",
+      "description": "Коммиты читаются живьём из git log --all, не копятся в board.json. Diff с честным предупреждением об обрезке.",
+      "estimate": null,
+      "events": [
+        {
+          "at": "2026-10-17T10:48:11+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T10:48:16+00:00",
+          "kind": "closed",
+          "payload": ""
+        }
+      ],
+      "id": "FB-3",
+      "module_id": "2552329a",
+      "parent_id": null,
+      "session_label": null,
+      "title": "Git-привязка по хэштегу и просмотр diff",
+      "updated_at": "2026-10-17T10:48:16+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": null,
+      "column_id": "wip",
+      "created_at": "2026-10-17T10:48:11+00:00",
+      "description": "Колонки, перетаскивание мышью и кнопками, фильтры, тёмная тема Yaru, инлайновые SVG-иконки.",
+      "estimate": 6.0,
+      "events": [
+        {
+          "at": "2026-10-17T10:48:11+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T10:48:17+00:00",
+          "kind": "moved",
+          "payload": "backlog → wip"
+        },
+        {
+          "at": "2026-10-17T10:48:18+00:00",
+          "kind": "edited",
+          "payload": "estimate, session_label"
+        }
+      ],
+      "id": "FB-4",
+      "module_id": "0474d612",
+      "parent_id": null,
+      "session_label": "вечер",
+      "title": "UI: доска, карточка, drag&drop, Yaru Dark",
+      "updated_at": "2026-10-17T10:48:18+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": "2026-10-17T10:48:17+00:00",
+      "column_id": "done",
+      "created_at": "2026-10-17T10:48:11+00:00",
+      "description": "45 тестов: CRUD, нумерация, атомарность, битый JSON, вложения, git-привязка, HTTP-выдача картинки.",
+      "estimate": null,
+      "events": [
+        {
+          "at": "2026-10-17T10:48:11+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T10:48:17+00:00",
+          "kind": "closed",
+          "payload": ""
+        }
+      ],
+      "id": "FB-5",
+      "module_id": "e5b68142",
+      "parent_id": null,
+      "session_label": null,
+      "title": "Тесты на stdlib unittest",
+      "updated_at": "2026-10-17T10:48:17+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": null,
+      "column_id": "review",
+      "created_at": "2026-10-17T10:48:11+00:00",
+      "description": "Файл копируется в .board/attachments/<id>/, картинка открывается в карточке, путь копируется в буфер.",
+      "estimate": 3.0,
+      "events": [
+        {
+          "at": "2026-10-17T10:48:11+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T10:48:18+00:00",
+          "kind": "moved",
+          "payload": "backlog → review"
+        },
+        {
+          "at": "2026-10-17T10:48:18+00:00",
+          "kind": "edited",
+          "payload": "estimate, session_label"
+        }
+      ],
+      "id": "FB-6",
+      "module_id": "0474d612",
+      "parent_id": null,
+      "session_label": "ночь",
+      "title": "Вложения: drag&drop и просмотр картинок в карточке",
+      "updated_at": "2026-10-17T10:48:18+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": null,
+      "column_id": "backlog",
+      "created_at": "2026-10-17T10:48:12+00:00",
+      "description": "Список внутри родителя с прогрессом N / M, состояние сворачивания в localStorage.",
+      "estimate": null,
+      "events": [
+        {
+          "at": "2026-10-17T10:48:12+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        }
+      ],
+      "id": "FB-7",
+      "module_id": "03c77835",
+      "parent_id": null,
+      "session_label": null,
+      "title": "Саб-задачи: прогресс и сворачивание",
+      "updated_at": "2026-10-17T10:48:12+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": null,
+      "column_id": "ready",
+      "created_at": "2026-10-17T10:48:12+00:00",
+      "description": "Быстрый старт, схема данных, git-привязка, все команды CLI, ограничения.",
+      "estimate": null,
+      "events": [
+        {
+          "at": "2026-10-17T10:48:12+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T10:48:18+00:00",
+          "kind": "moved",
+          "payload": "backlog → ready"
+        }
+      ],
+      "id": "FB-8",
+      "module_id": "1e415607",
+      "parent_id": null,
+      "session_label": null,
+      "title": "README и CREDITS",
+      "updated_at": "2026-10-17T10:48:18+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": null,
+      "column_id": "backlog",
+      "created_at": "2026-10-17T10:48:15+00:00",
+      "description": "",
+      "estimate": 0.5,
+      "events": [
+        {
+          "at": "2026-10-17T10:48:15+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        }
+      ],
+      "id": "FB-9",
+      "module_id": "03c77835",
+      "parent_id": "FB-7",
+      "session_label": null,
+      "title": "Прогресс N / M по column_id == done",
+      "updated_at": "2026-10-17T10:48:15+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": null,
+      "column_id": "backlog",
+      "created_at": "2026-10-17T10:48:15+00:00",
+      "description": "",
+      "estimate": 0.5,
+      "events": [
+        {
+          "at": "2026-10-17T10:48:15+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        }
+      ],
+      "id": "FB-10",
+      "module_id": "0474d612",
+      "parent_id": "FB-7",
+      "session_label": null,
+      "title": "Сворачивание с состоянием в localStorage",
+      "updated_at": "2026-10-17T10:48:15+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": null,
+      "column_id": "backlog",
+      "created_at": "2026-10-17T10:48:15+00:00",
+      "description": "",
+      "estimate": 0.5,
+      "events": [
+        {
+          "at": "2026-10-17T10:48:15+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        }
+      ],
+      "id": "FB-11",
+      "module_id": "0474d612",
+      "parent_id": "FB-7",
+      "session_label": null,
+      "title": "Скрытие саб-задач при активном поиске",
+      "updated_at": "2026-10-17T10:48:15+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": null,
+      "column_id": "backlog",
+      "created_at": "2026-10-17T10:48:16+00:00",
+      "description": "",
+      "estimate": null,
+      "events": [
+        {
+          "at": "2026-10-17T10:48:16+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        }
+      ],
+      "id": "FB-12",
+      "module_id": "1e415607",
+      "parent_id": "FB-8",
+      "session_label": null,
+      "title": "Отметить прочитанные коммиты как прочитанные",
+      "updated_at": "2026-10-17T10:48:16+00:00"
+    }
+  ]
+}
