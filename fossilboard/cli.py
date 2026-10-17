@@ -318,7 +318,7 @@ def cmd_module(args: argparse.Namespace) -> int:
         if args.module_cmd == "rename":
             changes["name"] = args.new_name or args.name
         if args.module_cmd == "color":
-            changes["color"] = args.color or args.new_name
+            changes["color"] = args.new_name
         if args.module_cmd == "edit":
             if args.new_name:
                 changes["name"] = args.new_name

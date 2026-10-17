@@ -27,7 +27,7 @@
     }
   ],
   "counters": {
-    "task": 13
+    "task": 14
   },
   "modules": [
     {
@@ -452,6 +452,27 @@
       "session_label": null,
       "title": "Баг UI: саб-задачи дублируются в колонке",
       "updated_at": "2026-10-17T10:49:28+00:00"
+    },
+    {
+      "attachments": [],
+      "closed_at": null,
+      "column_id": "backlog",
+      "created_at": "2026-10-17T10:51:33+00:00",
+      "description": "Подкоманда color брала args.color, которого у её парсера нет. Нашлось при прогоне всех команд из README — то есть ровно там, где документация должна работать.",
+      "estimate": 0.5,
+      "events": [
+        {
+          "at": "2026-10-17T10:51:33+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        }
+      ],
+      "id": "FB-14",
+      "module_id": "03c77835",
+      "parent_id": null,
+      "session_label": null,
+      "title": "Баг CLI: `module color` падал с AttributeError",
+      "updated_at": "2026-10-17T10:51:33+00:00"
     }
   ]
 }

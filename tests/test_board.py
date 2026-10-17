@@ -503,6 +503,16 @@ class TestCli(TempRepoCase):
         self.assertIn("Ядро", self.run_cli("module", "list").stdout)
         self.assertEqual(self.run_cli("add", "В ядре", "-m", "Ядро").returncode, 0)
 
+    def test_module_rename_and_color_cli(self):
+        self.run_cli("module", "add", "Ядро", "--color", "#88ccee")
+        renamed = self.run_cli("module", "rename", "Ядро", "Движок")
+        self.assertEqual(renamed.returncode, 0, renamed.stderr)
+        recolored = self.run_cli("module", "color", "Движок", "#77216F")
+        self.assertEqual(recolored.returncode, 0, recolored.stderr)
+        listed = self.run_cli("module", "list").stdout
+        self.assertIn("Движок", listed)
+        self.assertIn("#77216F", listed)
+
     def test_attach_cli_copies_file(self):
         self.run_cli("add", "Со скрином")
         src = Path(self.tmp) / "before.png"
