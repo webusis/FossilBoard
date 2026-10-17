@@ -131,16 +131,16 @@ def cmd_init(args: argparse.Namespace) -> int:
                                                            task_prefix=args.task_prefix)
     # повторный init после git clone: данные не трогаем, но путь к репе
     # переписываем — иначе клонированная доска смотрит в чужой каталог
+    repo_now = str(Path(args.repo).expanduser().resolve())
+    if existed and data["project"].get("repo_path") != repo_now:
+        # путь хранится и в самой доске; обновляем ДО регистрации проекта,
+        # иначе в конфиг попадёт старый путь (пойман на живом клоне)
+        data["project"]["repo_path"] = repo_now
+        save_board(args.repo, data)
     cfg = get_config()
-    proj = cfgmod.upsert_project(cfg, data["project"]["id"], data["project"]["name"],
-                                 data["project"]["repo_path"])
+    proj = cfgmod.upsert_project(cfg, data["project"]["id"], data["project"]["name"], repo_now)
     cfgmod.save(cfg)
     if existed:
-        # путь к репе записан в самой доске — после клона он чужой, обновляем
-        repo_now = str(Path(args.repo).expanduser().resolve())
-        if data["project"].get("repo_path") != repo_now:
-            data["project"]["repo_path"] = repo_now
-            save_board(args.repo, data)
         if args.id and args.id.upper() != data["project"]["id"]:
             print(f"внимание: доска уже настроена на префикс {data['project']['id']}, "
                   f"а в команде указан {args.id.upper()} — оставляю {data['project']['id']}",

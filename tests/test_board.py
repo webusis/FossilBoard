@@ -482,6 +482,12 @@ class TestServer(TempRepoCase):
 
 
 class TestCli(TempRepoCase):
+    def run_cfg(self, *args):
+        """Как run_cli, но без подставного --repo: путь резолвится через конфиг."""
+        return subprocess.run(["python3", str(REPO_ROOT / "board.py"), *args],
+                              capture_output=True, text=True, env=self.cli_env(),
+                              cwd=str(REPO_ROOT))
+
     def run_cli(self, *args, repo=None):
         env = self.cli_env()
         cmd = ["python3", str(REPO_ROOT / "board.py"), "--repo", str(repo or self.repo), *args]
@@ -531,17 +537,20 @@ class TestCli(TempRepoCase):
         elsewhere = self.tmp / "clone"
         elsewhere.mkdir()
         shutil.copytree(self.repo / ".board", elsewhere / ".board")
-        (self.repo / ".board" / "board.json").write_text(
-            (elsewhere / ".board" / "board.json").read_text(encoding="utf-8"), encoding="utf-8")
+        # доска помнит путь машины, с которой её склонировали
         proc = self.run_cli("init", "--id", "K2C", "--name", "Клон", "--repo", str(elsewhere))
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("перерегистрирован", proc.stdout)
         board = load_board(elsewhere)
         self.assertEqual(len(board["tasks"]), 1, "карточки не должны пропасть")
         self.assertEqual(board["project"]["repo_path"], str(elsewhere.resolve()))
-        listing = self.run_cli("list", repo=elsewhere)
+        listing = self.run_cfg("--repo", str(elsewhere), "list")
         self.assertEqual(listing.returncode, 0, listing.stderr)
         self.assertIn("Карточка из клона", listing.stdout)
+        # и конфиг должен указывать на клон, а не на исходную репу
+        projects = self.run_cfg("projects")
+        self.assertIn(str(elsewhere.resolve()), projects.stdout)
+        self.assertNotIn(str(self.repo.resolve()), projects.stdout)
 
     def test_attach_cli_copies_file(self):
         self.run_cli("add", "Со скрином")
