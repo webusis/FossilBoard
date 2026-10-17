@@ -13,18 +13,23 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import __version__, gitlink
+from . import __version__
+from . import config as cfgmod
+from . import gitlink
 from .storage import (
     BoardError, add_module, add_task, attachment_dir, attach_file, delete_attachment,
     delete_module, delete_task, find_module, find_task, guess_content_type, load_board,
-    load_registry, move_task, resolve_column, save_board, subtasks, task_sort_key,
+    move_task, resolve_column, save_board, subtasks, task_sort_key,
     update_module, update_task, wip_state,
 )
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
-MAX_UPLOAD = 64 * 1024 * 1024  # 64 МБ — картинки скриншотов не должны упереться
 
 _write_lock = threading.Lock()
+
+
+class ServeError(Exception):
+    """Не удалось поднять сервер: порт занят, нет прав, плохой адрес."""
 
 
 class ApiError(Exception):
@@ -34,16 +39,22 @@ class ApiError(Exception):
         self.message = message
 
 
-def _project_repo(project: str | None, default_repo: str | None) -> str:
+def upload_limit(cfg: dict | None) -> int:
+    """Лимит загрузки вложения: конфиг машины → 64 МБ по умолчанию."""
+    mb = int(cfgmod.get(cfg or {}, "attachments.max_upload_mb", 64))
+    return mb * 1024 * 1024
+
+
+def _project_repo(project: str | None, default_repo: str | None, cfg: dict | None = None) -> str:
+    """Репозиторий проекта: явный project → текущий проект сервера."""
     if not project:
         if default_repo:
             return default_repo
         raise ApiError(400, "не указан проект")
-    reg = load_registry()
-    for proj in reg["projects"]:
-        if proj["id"].lower() == project.lower():
-            return proj["repo_path"]
-    raise ApiError(404, f"проект {project} не найден в реестре")
+    proj = cfgmod.project(cfg or {}, project)
+    if proj is None:
+        raise ApiError(404, f"проект {project} не найден в конфиге")
+    return proj["repo_path"]
 
 
 def board_payload(repo: str) -> dict:
@@ -91,6 +102,7 @@ class Handler(BaseHTTPRequestHandler):
     server_version = f"FossilBoard/{__version__}"
     protocol_version = "HTTP/1.1"
     default_repo: str | None = None
+    cfg: dict | None = None      # конфиг машины: проекты, лимиты, порт
     quiet: bool = False  # тесты выключают, чтобы не мусорить в выводе
 
     # ---- инфраструктура -------------------------------------------------
@@ -129,9 +141,10 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, f"тело запроса не JSON: {exc}") from exc
 
     def _read_body(self) -> bytes:
+        limit = upload_limit(self.cfg)
         length = int(self.headers.get("Content-Length") or 0)
-        if length > MAX_UPLOAD:
-            raise ApiError(413, f"файл больше лимита {MAX_UPLOAD // (1024 * 1024)} МБ")
+        if length > limit:
+            raise ApiError(413, f"файл больше лимита {limit // (1024 * 1024)} МБ")
         return self.rfile.read(length) if length else b""
 
     # ---- маршрутизация --------------------------------------------------
@@ -195,28 +208,28 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- GET ------------------------------------------------------------
     def _api_get(self, path: str, q: dict) -> None:
-        reg = load_registry()
         if path == "/api/state":
             self._json({
-                "projects": reg["projects"],
+                "projects": (self.cfg or {}).get("projects", []),
                 "current": self.default_repo,
+                "config_path": (self.cfg or {}).get("_path"),
                 "version": __version__,
             })
             return
         if path == "/api/board":
-            self._json(board_payload(_project_repo(q.get("project"), self.default_repo)))
+            self._json(board_payload(_project_repo(q.get("project"), self.default_repo, self.cfg)))
             return
         if path == "/api/task":
-            repo = _project_repo(q.get("project"), self.default_repo)
+            repo = _project_repo(q.get("project"), self.default_repo, self.cfg)
             self._json(task_payload(repo, q.get("id", "")))
             return
         if path == "/api/commits":
-            repo = _project_repo(q.get("project"), self.default_repo)
+            repo = _project_repo(q.get("project"), self.default_repo, self.cfg)
             commits = gitlink.commits_for_task(repo, q.get("id", ""))
             self._json({"commits": commits})
             return
         if path == "/api/diff":
-            repo = _project_repo(q.get("project"), self.default_repo)
+            repo = _project_repo(q.get("project"), self.default_repo, self.cfg)
             rev = q.get("rev", "")
             if not rev:
                 raise ApiError(400, "нужен rev")
@@ -226,7 +239,7 @@ class Handler(BaseHTTPRequestHandler):
             # /api/attachments/<task-id>/<имя файла>
             tail = path[len("/api/attachments/"):]
             task_id, _, name = tail.partition("/")
-            self._send_attachment(_project_repo(q.get("project"), self.default_repo),
+            self._send_attachment(_project_repo(q.get("project"), self.default_repo, self.cfg),
                                   task_id, name)
             return
         raise ApiError(404, f"нет такого маршрута: {path}")
@@ -248,7 +261,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- POST -----------------------------------------------------------
     def _api_post(self, path: str, q: dict) -> None:
-        repo = _project_repo(q.get("project"), self.default_repo)
+        repo = _project_repo(q.get("project"), self.default_repo, self.cfg)
         with _write_lock:
             data = load_board(repo)
             if path == "/api/tasks":
@@ -298,7 +311,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- PUT/PATCH ------------------------------------------------------
     def _api_update(self, path: str, q: dict) -> None:
-        repo = _project_repo(q.get("project"), self.default_repo)
+        repo = _project_repo(q.get("project"), self.default_repo, self.cfg)
         body = self._read_json()
         with _write_lock:
             data = load_board(repo)
@@ -321,7 +334,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- DELETE ---------------------------------------------------------
     def _api_delete(self, path: str, q: dict) -> None:
-        repo = _project_repo(q.get("project"), self.default_repo)
+        repo = _project_repo(q.get("project"), self.default_repo, self.cfg)
         with _write_lock:
             data = load_board(repo)
             if path.startswith("/api/tasks/"):
@@ -342,12 +355,22 @@ class Handler(BaseHTTPRequestHandler):
         raise ApiError(404, f"нет такого маршрута: {path}")
 
 
-def serve(repo: str | None = None, host: str = "0.0.0.0", port: int = 8770,
-          open_browser: bool = False) -> int:
+def serve(repo: str | None = None, host: str | None = None, port: int | None = None,
+          cfg: dict | None = None) -> int:
+    """Поднять доску. Без явных host/port берёмся из конфига машины."""
+    cfg = cfg if cfg is not None else cfgmod.load()
+    host, port = cfgmod.effective_server(cfg, host, port)
     Handler.default_repo = str(Path(repo).resolve()) if repo else None
-    httpd = ThreadingHTTPServer((host, port), Handler)
+    Handler.cfg = cfg
+    try:
+        httpd = ThreadingHTTPServer((host, port), Handler)
+    except OSError as exc:
+        raise ServeError(
+            f"порт занят или недоступен: {host}:{port} — {exc.strerror or exc}"
+        ) from exc
     shown = "localhost" if host in ("0.0.0.0", "") else host
     print(f"FossilBoard {__version__} — http://{shown}:{port}")
+    print(f"конфиг: {cfg.get('_path', '—')}")
     if Handler.default_repo:
         print(f"проект: {Handler.default_repo}")
     else:

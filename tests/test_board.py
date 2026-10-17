@@ -9,11 +9,13 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 from pathlib import Path
 
+from fossilboard import config as config_mod
 from fossilboard import gitlink
 from fossilboard import storage
 from fossilboard.storage import (
@@ -37,6 +39,7 @@ class TempRepoCase(unittest.TestCase):
     """Каждый тест — свежая временная репа с инициализированной доской."""
 
     prefix = "K2C"
+    board_name = "Тестовый проект"
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="fossilboard-test-"))
@@ -45,13 +48,22 @@ class TempRepoCase(unittest.TestCase):
         git(self.repo, "init", "-q")
         git(self.repo, "config", "user.email", "t@example.com")
         git(self.repo, "config", "user.name", "Тест")
-        self.data = init_board(self.repo, self.prefix, "Тестовый проект")
+        self.data = init_board(self.repo, self.prefix, self.board_name)
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def save(self):
         save_board(self.repo, self.data)
+
+    def cli_env(self) -> dict:
+        """Окружение для subprocess: конфиг — временный.
+
+        Без этого тесты писали бы проекты в настоящий ~/.config/fossilboard.
+        """
+        env = dict(os.environ, PYTHONPATH=str(REPO_ROOT))
+        env.setdefault("FOSSILBOARD_CONFIG", str(self.tmp / "config.json"))
+        return env
 
     def new_task(self, title="Задача", **kw):
         return add_task(self.data, title, **kw)
@@ -471,7 +483,7 @@ class TestServer(TempRepoCase):
 
 class TestCli(TempRepoCase):
     def run_cli(self, *args, repo=None):
-        env = dict(os.environ, PYTHONPATH=str(REPO_ROOT))
+        env = self.cli_env()
         cmd = ["python3", str(REPO_ROOT / "board.py"), "--repo", str(repo or self.repo), *args]
         proc = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(REPO_ROOT))
         return proc
@@ -513,6 +525,24 @@ class TestCli(TempRepoCase):
         self.assertIn("Движок", listed)
         self.assertIn("#77216F", listed)
 
+    def test_reinit_after_clone_keeps_data_and_fixes_repo_path(self):
+        """После git clone доска уже есть: init не должен падать и не терять карточки."""
+        self.run_cli("add", "Карточка из клона")
+        elsewhere = self.tmp / "clone"
+        elsewhere.mkdir()
+        shutil.copytree(self.repo / ".board", elsewhere / ".board")
+        (self.repo / ".board" / "board.json").write_text(
+            (elsewhere / ".board" / "board.json").read_text(encoding="utf-8"), encoding="utf-8")
+        proc = self.run_cli("init", "--id", "K2C", "--name", "Клон", "--repo", str(elsewhere))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("перерегистрирован", proc.stdout)
+        board = load_board(elsewhere)
+        self.assertEqual(len(board["tasks"]), 1, "карточки не должны пропасть")
+        self.assertEqual(board["project"]["repo_path"], str(elsewhere.resolve()))
+        listing = self.run_cli("list", repo=elsewhere)
+        self.assertEqual(listing.returncode, 0, listing.stderr)
+        self.assertIn("Карточка из клона", listing.stdout)
+
     def test_attach_cli_copies_file(self):
         self.run_cli("add", "Со скрином")
         src = Path(self.tmp) / "before.png"
@@ -542,6 +572,210 @@ class TestOrdering(TempRepoCase):
     def test_task_num(self):
         self.assertEqual(task_num("K2C-42"), 42)
         self.assertEqual(task_num("FB-7"), 7)
+
+
+class TestConfig(TempRepoCase):
+    """Конфиг машины: пути, проекты, приоритеты. Реестра в репе больше нет."""
+
+    prefix = "FB"
+    board_name = "FossilBoard"
+
+    def setUp(self):
+        super().setUp()
+        self.cfg_path = self.tmp / "config.json"
+        self.env = dict(self.cli_env(), FOSSILBOARD_CONFIG=str(self.cfg_path))
+
+    def load(self):
+        return config_mod.load(self.cfg_path)
+
+    def test_defaults_when_file_absent(self):
+        cfg = self.load()
+        self.assertFalse(cfg["_exists"])
+        self.assertEqual(cfg["server"]["port"], 8770)
+        self.assertEqual(cfg["server"]["host"], "0.0.0.0")
+        self.assertEqual(cfg["ui"]["theme"], "dark")
+        self.assertEqual(cfg["projects"], [])
+
+    def test_partial_file_keeps_other_defaults(self):
+        self.cfg_path.write_text(json.dumps({"server": {"port": 9000}}), encoding="utf-8")
+        cfg = self.load()
+        self.assertEqual(cfg["server"]["port"], 9000)
+        self.assertEqual(cfg["server"]["host"], "0.0.0.0", "остальные значения не должны теряться")
+        self.assertEqual(cfg["attachments"]["max_upload_mb"], 64)
+
+    def test_roundtrip_and_sorted_keys(self):
+        cfg = self.load()
+        config_mod.upsert_project(cfg, "fb", "FossilBoard", str(self.repo))
+        path = config_mod.save(cfg, self.cfg_path)
+        self.assertEqual(path, self.cfg_path)
+        raw = self.cfg_path.read_text(encoding="utf-8")
+        self.assertEqual(json.loads(raw)["projects"][0]["id"], "FB", "id нормализуется в верхний регистр")
+        self.assertEqual(json.loads(raw)["version"], config_mod.CONFIG_VERSION)
+        keys = list(json.loads(raw))
+        self.assertEqual(keys, sorted(keys), "ключи конфига тоже сортированы ради diff")
+
+    def test_broken_config_reports_and_keeps_working(self):
+        """Битый конфиг не должен превращаться в отказ работать: доска живёт
+        на значениях по умолчанию и говорит, что поправить."""
+        self.cfg_path.write_text("{ не json", encoding="utf-8")
+        with self.assertRaises(config_mod.ConfigError) as ctx:
+            self.load()
+        self.assertIn("битый JSON", str(ctx.exception))
+        # значения по умолчанию остаются целыми и после неудачной загрузки
+        self.assertEqual(config_mod.defaults()["server"]["port"], 8770)
+        self.assertEqual(config_mod.defaults()["projects"], [])
+        self.assertEqual(config_mod.defaults(self.cfg_path)["_path"], str(self.cfg_path))
+        # CLI перехватывает ошибку и продолжает работать
+        proc = self.run_cfg("list")
+        self.assertEqual(proc.returncode, 1, "без проектов в конфиге это честная ошибка")
+        self.assertIn("битый JSON", proc.stderr)
+        # но с явным --repo доска работает как обычно — битый конфиг не блокирует работу
+        self.run_cfg("--repo", str(self.repo), "add", "Задача до битого конфига")
+        ok = self.run_cfg("--repo", str(self.repo), "list")
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        self.assertIn("битый JSON", ok.stderr)
+        self.assertIn("Задача до битого конфига", ok.stdout)
+
+    def run_cfg(self, *args):
+        return subprocess.run(["python3", str(REPO_ROOT / "board.py"), *args],
+                              capture_output=True, text=True, env=self.env, cwd=str(REPO_ROOT))
+
+    def test_priority_cli_over_env_over_config(self):
+        self.cfg_path.write_text(json.dumps({"server": {"host": "127.0.0.1", "port": 9100}}),
+                                 encoding="utf-8")
+        cfg = self.load()
+        host, port = config_mod.effective_server(cfg, None, None)
+        self.assertEqual((host, port), ("127.0.0.1", 9100), "из конфига")
+        with mock.patch.dict(os.environ, {"FOSSILBOARD_PORT": "9200"}):
+            host, port = config_mod.effective_server(cfg, None, None)
+            self.assertEqual(port, 9200, "переменная окружения перекрывает конфиг")
+            host, port = config_mod.effective_server(cfg, "0.0.0.0", 9300)
+            self.assertEqual((host, port), ("0.0.0.0", 9300), "флаг CLI перекрывает всё")
+
+    def test_resolve_repo_chain(self):
+        other = self.tmp / "other"
+        other.mkdir()
+        cfg = self.load()
+        config_mod.upsert_project(cfg, "FB", "FossilBoard", str(self.repo))
+        config_mod.upsert_project(cfg, "K2C", "Kingdom-like", str(other))
+        # --repo сильнее всего
+        self.assertEqual(config_mod.resolve_repo(cfg, str(other)), str(other.resolve()))
+        # явный проект
+        self.assertEqual(config_mod.resolve_repo(cfg, None, "k2c"), str(other.resolve()))
+        # без указаний при нескольких проектах — ничего не выдумываем
+        self.assertIsNone(config_mod.resolve_repo(cfg))
+        # единственный проект — очевидный выбор
+        cfg["projects"] = [cfg["projects"][0]]
+        self.assertEqual(config_mod.resolve_repo(cfg), str(self.repo.resolve()))
+
+    def test_upsert_updates_instead_of_duplicating(self):
+        cfg = self.load()
+        first = config_mod.upsert_project(cfg, "FB", "FossilBoard", str(self.repo))
+        again = config_mod.upsert_project(cfg, "fb", "Другое имя", str(self.tmp))
+        self.assertEqual(len(cfg["projects"]), 1, "повторный init не должен плодить проекты")
+        self.assertEqual(first["id"], again["id"])
+        self.assertEqual(again["name"], "Другое имя")
+        self.assertTrue(config_mod.remove_project(cfg, "FB"))
+        self.assertFalse(config_mod.remove_project(cfg, "FB"))
+
+    def test_migrate_legacy_registry_from_repo(self):
+        """Проекты из старого .board/projects.json переезжают в конфиг один раз."""
+        legacy = self.repo / ".board" / "projects.json"
+        legacy.write_text(json.dumps({"projects": [
+            {"id": "FB", "name": "FossilBoard", "repo_path": str(self.repo)}]}), encoding="utf-8")
+        cfg = self.load()
+        moved = config_mod.migrate_legacy_registry(cfg, self.cfg_path,
+                                                   candidates=[legacy])
+        self.assertEqual(moved, ["FB"])
+        self.assertFalse(legacy.exists(), "реестр из репозитория удаляется")
+        config_mod.save(cfg, self.cfg_path)
+        again = config_mod.migrate_legacy_registry(self.load(), self.cfg_path,
+                                                   candidates=[legacy])
+        self.assertEqual(again, [], "повторная миграция не должна ничего трогать")
+
+    def test_upload_limit_from_config(self):
+        from fossilboard.server import upload_limit
+        cfg = self.load()
+        self.assertEqual(upload_limit(cfg), 64 * 1024 * 1024)
+        cfg = config_mod.set_value(cfg, "attachments.max_upload_mb", 8)
+        self.assertEqual(upload_limit(cfg), 8 * 1024 * 1024)
+
+
+class TestCliConfig(TempRepoCase):
+    """Команды board.py config — то, чем пользуется человек, а не тест."""
+
+    prefix = "FB"
+    board_name = "FossilBoard"
+
+    def setUp(self):
+        super().setUp()
+        self.cfg_path = self.tmp / "config.json"
+        self.env = dict(self.cli_env(), FOSSILBOARD_CONFIG=str(self.cfg_path))
+
+    def run_cfg(self, *args):
+        env = dict(self.env)
+        proc = subprocess.run(["python3", str(REPO_ROOT / "board.py"), *args],
+                              capture_output=True, text=True, env=env, cwd=str(REPO_ROOT))
+        return proc
+
+    def test_init_writes_config_and_projects_lists_it(self):
+        proc = self.run_cfg("init", "--id", "FB", "--name", "FossilBoard", "--repo", str(self.repo))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(self.cfg_path.is_file())
+        listed = self.run_cfg("projects")
+        self.assertIn("FB", listed.stdout)
+        self.assertIn(str(self.repo), listed.stdout)
+        self.assertIn("[✓]", listed.stdout, "отмечаем, что доска на месте")
+
+    def test_config_show_path_and_set(self):
+        self.run_cfg("init", "--id", "FB", "--name", "FossilBoard", "--repo", str(self.repo))
+        self.assertEqual(self.run_cfg("config", "path").stdout.strip(), str(self.cfg_path))
+        shown = self.run_cfg("config")
+        self.assertEqual(shown.returncode, 0, shown.stderr)
+        self.assertIn("server", shown.stdout)
+        changed = self.run_cfg("config", "set", "server.port", "9111")
+        self.assertEqual(changed.returncode, 0, changed.stderr)
+        self.assertIn("9111", changed.stdout)
+        self.assertEqual(json.loads(self.cfg_path.read_text())["server"]["port"], 9111)
+
+    def test_config_add_and_rm_project(self):
+        added = self.run_cfg("config", "add-project", "K2C", "Kingdom-like", "--repo", str(self.repo))
+        self.assertEqual(added.returncode, 0, added.stderr)
+        self.assertIn("конфиг:", added.stdout)
+        self.assertIn("K2C", self.run_cfg("projects").stdout)
+        self.assertEqual(self.run_cfg("config", "rm-project", "K2C").returncode, 0)
+        self.assertNotIn("K2C", self.run_cfg("projects").stdout)
+        self.assertEqual(self.run_cfg("config", "rm-project", "K2C").returncode, 1)
+
+    def test_serve_uses_config_port(self):
+        """Порт для serve берётся из конфига, флаг CLI его перекрывает."""
+        self.run_cfg("init", "--id", "FB", "--name", "FossilBoard", "--repo", str(self.repo))
+        self.run_cfg("config", "set", "server.port", "8999")
+
+        from fossilboard import cli as cli_mod
+        from fossilboard import server as server_mod
+        started = {}
+
+        def fake_serve(repo=None, host=None, port=None, cfg=None):
+            started.update(repo=repo, host=host, port=port, cfg=cfg)
+            return 0
+
+        with mock.patch.dict(os.environ, self.env), \
+                mock.patch.object(server_mod, "serve", fake_serve):
+            self.assertEqual(cli_mod.main(["serve"]), 0)
+            self.assertEqual(started.get("port"), 8999, "порт должен прийти из конфига")
+            self.assertEqual(started.get("host"), "0.0.0.0")
+            self.assertEqual(started.get("repo"), str(self.repo.resolve()))
+
+            self.assertEqual(cli_mod.main(["serve", "--port", "8123"]), 0)
+            self.assertEqual(started.get("port"), 8123, "флаг CLI перекрывает конфиг")
+
+            os.environ["FOSSILBOARD_PORT"] = "8777"
+            try:
+                self.assertEqual(cli_mod.main(["serve"]), 0)
+                self.assertEqual(started.get("port"), 8777, "переменная окружения перекрывает конфиг")
+            finally:
+                del os.environ["FOSSILBOARD_PORT"]
 
 
 if __name__ == "__main__":

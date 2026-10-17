@@ -8,7 +8,7 @@
 [![license](https://img.shields.io/badge/license-MIT-77216F?style=flat-square)](LICENSE)
 [![python](https://img.shields.io/badge/python-3.14-E95420?style=flat-square)](https://docs.python.org/3.14/)
 [![dependencies](https://img.shields.io/badge/dependencies-0-4C9A2A?style=flat-square)](#зачем-так)
-[![tests](https://img.shields.io/badge/tests-46%20passed-19B6EE?style=flat-square)](#тесты)
+[![tests](https://img.shields.io/badge/tests-60%20passed-19B6EE?style=flat-square)](#тесты)
 [![theme](https://img.shields.io/badge/theme-Yaru%20Dark-300A24?style=flat-square)](#оформление)
 
 </div>
@@ -101,6 +101,53 @@ cd FissilBoard
 
 Коды выхода: `0` — успех, `1` — ошибка. Никакого декоративного вывода.
 
+## Конфигурация
+
+Пути и параметры живут **не в репозитории, а в конфиге машины**:
+
+```
+~/.config/fossilboard/config.json
+```
+
+Путь к репе — это свойство твоего компьютера, а не проекта: держать его в git
+значило бы, что клон на чужой машине смотрит в чужой каталог.
+
+```jsonc
+{
+  "server":      { "host": "0.0.0.0", "port": 8770 },
+  "attachments": { "max_upload_mb": 64 },
+  "git":         { "diff_max_lines": 4000 },
+  "ui":          { "theme": "dark", "default_session": null },
+  "paths": {
+    "scratch": "/tmp/fossilboard",               // черновики и неотсортированные скрины
+    "logs":    "~/.local/state/fossilboard/logs" // логи и отчёты
+  },
+  "projects": [
+    { "id": "FB", "name": "FossilBoard", "repo_path": "/home/user/projects/FissilBoard" }
+  ]
+}
+```
+
+```bash
+./board.py config                       # показать текущий конфиг
+./board.py config path                  # где он лежит
+./board.py config set server.port 9000  # поменять параметр
+./board.py config add-project FB "FossilBoard" --repo ~/projects/FissilBoard
+./board.py config rm-project FB
+```
+
+Приоритет настроек: **флаг CLI → переменная окружения → конфиг → умолчание.**
+
+| Переменная окружения | Что перекрывает |
+|---|---|
+| `FOSSILBOARD_CONFIG` | путь к самому конфигу |
+| `FOSSILBOARD_REPO` | репозиторий по умолчанию (как `--repo`) |
+| `FOSSILBOARD_PROJECT` | проект по умолчанию (как `--project`) |
+| `FOSSILBOARD_PORT`, `FOSSILBOARD_HOST` | адрес сервера |
+
+Битый конфиг не превращается в отказ работать: доска скажет, где ошибка, и
+продолжит на значениях по умолчанию.
+
 ## Git-привязка
 
 Коммит с `#FB-12` (или `FB-12: текст`) появляется в карточке `FB-12` с хэшем,
@@ -122,16 +169,16 @@ git commit -m "FB-12: разбор сохранений"   # → коммит п
 FissilBoard/
 ├── board.py                  точка входа CLI
 ├── fossilboard/
-│   ├── storage.py            модель данных, атомарная запись, вложения, реестр
+│   ├── config.py             конфиг машины: пути, проекты, приоритеты настроек
+│   ├── storage.py            модель данных, атомарная запись, вложения
 │   ├── gitlink.py            живой поиск коммитов и diff по хэштегу
 │   ├── server.py             REST поверх http.server
 │   ├── cli.py                команды терминала
 │   └── web/                  index.html · app.js · style.css — без сборки
-├── tests/test_board.py       46 тестов на stdlib unittest
+├── tests/test_board.py       60 тестов на stdlib unittest
 ├── docs/                     скриншоты для README
 └── .board/                   данные этой репы (у других проектов — у них в своих)
     ├── board.json            источник правды
-    ├── projects.json         реестр проектов
     └── attachments/<FB-N>/   вложения и скриншоты
 ```
 
@@ -154,12 +201,13 @@ git -C ~/projects/k2c-proto show HEAD:.board/board.json > ~/projects/k2c-proto/.
 ## Тесты
 
 ```bash
-python3 -m unittest discover -s tests -v      # 46 тестов, ~16 с
+python3 -m unittest discover -s tests -v      # 60 тестов, ~23 с
 ```
 
 Покрыты: CRUD, запрет переиспользования ID, перемещение и прогресс саб-задач,
 атомарность записи, вложения, поиск коммитов по хэштегу и diff, восстановление
-после битого JSON, выдача картинки по HTTP байт-в-байт, команды CLI.
+после битого JSON, выдача картинки по HTTP байт-в-байт, команды CLI, конфиг:
+приоритеты настроек, миграция старого реестра, поведение при битом конфиге.
 
 ## Оформление
 

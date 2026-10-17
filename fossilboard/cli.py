@@ -9,12 +9,13 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from . import config as cfgmod
 from . import gitlink
 from .storage import (
-    BoardError, add_module, add_task, attach_file, board_dir, column_name, delete_attachment,
-    delete_module, delete_task, find_module, find_task, init_board, load_board,
-    load_registry, move_task, register_project, resolve_column, save_board, subtasks,
-    unregister_project, update_module, update_task, wip_state,
+    BoardError, add_module, add_task, attach_file, board_dir, board_path, column_name,
+    delete_attachment, delete_module, delete_task, find_module, find_task, init_board,
+    load_board, move_task, resolve_column, save_board, subtasks, update_module,
+    update_task, wip_state,
 )
 
 EXIT_OK = 0
@@ -46,32 +47,40 @@ def human_size(num: int) -> str:
 # выбор проекта
 # --------------------------------------------------------------------------
 
+def get_config() -> dict:
+    """Конфиг машины; при первом запуске подхватываем старый реестр из репы."""
+    try:
+        cfg = cfgmod.load()
+    except cfgmod.ConfigError as exc:
+        print(f"предупреждение: {exc}", file=sys.stderr)
+        cfg = cfgmod.defaults()  # работаем на умолчаниях, но не молчим об ошибке
+    moved = cfgmod.migrate_legacy_registry(cfg, cfg.get("_path"))
+    if moved:
+        cfgmod.save(cfg)
+        print(f"проекты перенесены из .board/projects.json в конфиг: {', '.join(moved)}")
+    return cfg
+
+
 def resolve_repo(args: argparse.Namespace) -> str | None:
-    if getattr(args, "repo", None):
-        return str(Path(args.repo).expanduser().resolve())
-    env = os.environ.get("FOSSILBOARD_REPO")
-    if env:
-        return str(Path(env).expanduser().resolve())
-    reg = load_registry()
-    wanted = getattr(args, "project", None) or os.environ.get("FOSSILBOARD_PROJECT")
-    projects = reg["projects"]
-    if wanted:
-        for proj in projects:
-            if proj["id"].lower() == wanted.lower():
-                return proj["repo_path"]
-        return None
-    if len(projects) == 1:
-        return projects[0]["repo_path"]
+    cfg = get_config()
+    repo = cfgmod.resolve_repo(cfg, getattr(args, "repo", None),
+                               getattr(args, "project", None))
+    if repo:
+        return repo
+    projects = cfg.get("projects", [])
     if projects:
         ids = ", ".join(p["id"] for p in projects)
-        raise BoardError(f"проект не указан, в реестре их несколько ({ids}) — добавь --project")
-    raise BoardError("в реестре нет проектов. Создать:  board.py init --id FB --name \"...\" --repo <путь>")
+        raise BoardError(f"проект не указан, в конфиге их несколько ({ids}) — добавь --project")
+    raise BoardError(
+        "в конфиге нет проектов. Создать доску:\n"
+        "  board.py init --id FB --name \"FossilBoard\" --repo <путь>"
+    )
 
 
 def load(args: argparse.Namespace) -> tuple[str, dict]:
     repo = resolve_repo(args)
     if not repo:
-        raise BoardError(f"проект не найден в реестре: --project {getattr(args, 'project', None)}")
+        raise BoardError(f"проект не найден в конфиге: --project {getattr(args, 'project', None)}")
     return repo, load_board(repo)
 
 
@@ -116,20 +125,87 @@ def fmt_task(task: dict, data: dict, *, indent: int = 0) -> list[str]:
 # --------------------------------------------------------------------------
 
 def cmd_init(args: argparse.Namespace) -> int:
-    data = init_board(args.repo, args.id, args.name, task_prefix=args.task_prefix)
-    proj = register_project(args.id, args.name, data["project"]["repo_path"])
-    print(f"доска создана: {board_dir(proj['repo_path']) / 'board.json'}")
-    print(f"проект: {proj['id']} «{proj['name']}» → {proj['repo_path']}")
+    path = board_path(args.repo)
+    existed = path.exists()
+    data = load_board(args.repo) if existed else init_board(args.repo, args.id, args.name,
+                                                           task_prefix=args.task_prefix)
+    # повторный init после git clone: данные не трогаем, но путь к репе
+    # переписываем — иначе клонированная доска смотрит в чужой каталог
+    cfg = get_config()
+    proj = cfgmod.upsert_project(cfg, data["project"]["id"], data["project"]["name"],
+                                 data["project"]["repo_path"])
+    cfgmod.save(cfg)
+    if existed:
+        # путь к репе записан в самой доске — после клона он чужой, обновляем
+        repo_now = str(Path(args.repo).expanduser().resolve())
+        if data["project"].get("repo_path") != repo_now:
+            data["project"]["repo_path"] = repo_now
+            save_board(args.repo, data)
+        if args.id and args.id.upper() != data["project"]["id"]:
+            print(f"внимание: доска уже настроена на префикс {data['project']['id']}, "
+                  f"а в команде указан {args.id.upper()} — оставляю {data['project']['id']}",
+                  file=sys.stderr)
+        print(f"доска уже была: {path}")
+        print(f"данные не тронуты, репозиторий перерегистрирован: {repo_now}")
+    else:
+        print(f"доска создана: {path}")
+        print(f"проект: {proj['id']} «{proj['name']}» → {proj['repo_path']}")
     return EXIT_OK
 
 
 def cmd_projects(args: argparse.Namespace) -> int:
-    reg = load_registry()
-    if not reg["projects"]:
-        print("реестр пуст. Создать доску:  board.py init --id FB --name \"FossilBoard\" --repo <путь>")
+    cfg = get_config()
+    if not cfg["projects"]:
+        print("в конфиге нет проектов. Создать доску:  "
+              "board.py init --id FB --name \"FossilBoard\" --repo <путь>")
         return EXIT_OK
-    for proj in reg["projects"]:
-        print(f"{proj['id']:<6} {proj['name']:<16} {proj['repo_path']}")
+    for proj in cfg["projects"]:
+        board = Path(proj["repo_path"]) / ".board" / "board.json"
+        mark = "✓" if board.is_file() else "нет доски"
+        print(f"{proj['id']:<6} {proj['name']:<16} {proj['repo_path']}  [{mark}]")
+    print(f"\nконфиг: {cfg['_path']}")
+    return EXIT_OK
+
+
+def cmd_config(args: argparse.Namespace) -> int:
+    """Показать, создать или поправить конфиг машины."""
+    cfg = get_config()
+    if args.config_cmd == "path":
+        print(cfg["_path"])
+        return EXIT_OK
+    if args.config_cmd == "init":
+        path = cfgmod.save(cfg)
+        print(f"конфиг создан: {path}")
+        return EXIT_OK
+    if args.config_cmd == "set":
+        if not args.key:
+            return die("нужен ключ: board.py config set server.port 9000")
+        value = cfgmod.cast(args.value)
+        old = cfgmod.get(cfg, args.key)
+        cfgmod.set_value(cfg, args.key, value)
+        cfgmod.save(cfg)
+        print(f"{args.key}: {old!r} → {value!r}")
+        return EXIT_OK
+    if args.config_cmd == "add-project":
+        if not (args.id and args.repo):
+            return die("нужно: board.py config add-project FB \"FossilBoard\" --repo <путь>")
+        proj = cfgmod.upsert_project(cfg, args.id, args.name or args.id, args.repo)
+        cfgmod.save(cfg)
+        print(f"{proj['id']}  {proj['name']}  →  {proj['repo_path']}")
+        print(f"конфиг: {cfg['_path']}")
+        return EXIT_OK
+    if args.config_cmd == "rm-project":
+        if not args.id:
+            return die("нужен id: board.py config rm-project FB")
+        if not cfgmod.remove_project(cfg, args.id):
+            return die(f"проект {args.id} в конфиге не найден")
+        cfgmod.save(cfg)
+        print(f"проект {args.id} убран из конфига (доска в репе не тронута)")
+        return EXIT_OK
+    # показать
+    shown = {k: v for k, v in cfg.items() if not k.startswith("_")}
+    print(f"конфиг: {cfg['_path']}{'' if cfg['_exists'] else '  (создан из значений по умолчанию)'}")
+    print(json.dumps(shown, indent=2, sort_keys=True, ensure_ascii=False))
     return EXIT_OK
 
 
@@ -334,9 +410,14 @@ def cmd_module(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    from .server import serve
+    from .server import ServeError, serve
+    cfg = get_config()
     repo = resolve_repo(args)
-    return serve(repo=repo, host=args.host, port=args.port, open_browser=False)
+    host, port = cfgmod.effective_server(cfg, args.host, args.port)
+    try:
+        return serve(repo=repo, host=host, port=port, cfg=cfg)
+    except ServeError as exc:
+        return die(str(exc))
 
 
 def cmd_json(args: argparse.Namespace) -> int:
@@ -364,8 +445,28 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--task-prefix", help="префикс задач, по умолчанию --id")
     s.set_defaults(func=cmd_init)
 
-    s = sub.add_parser("projects", help="список проектов реестра")
+    s = sub.add_parser("projects", help="проекты из конфига")
     s.set_defaults(func=cmd_projects)
+
+    s = sub.add_parser("config", help="конфиг машины: пути, проекты, порт")
+    csub = s.add_subparsers(dest="config_cmd")
+    cs = csub.add_parser("path", help="где лежит конфиг")
+    cs.set_defaults(func=cmd_config)
+    cs = csub.add_parser("init", help="создать конфиг со значениями по умолчанию")
+    cs.set_defaults(func=cmd_config)
+    cs = csub.add_parser("set", help="изменить параметр: server.port 9000")
+    cs.add_argument("key")
+    cs.add_argument("value", nargs="?", default="")
+    cs.set_defaults(func=cmd_config)
+    cs = csub.add_parser("add-project", help="добавить проект в конфиг")
+    cs.add_argument("id")
+    cs.add_argument("name", nargs="?")
+    cs.add_argument("--repo", required=True)
+    cs.set_defaults(func=cmd_config)
+    cs = csub.add_parser("rm-project", help="убрать проект из конфига")
+    cs.add_argument("id")
+    cs.set_defaults(func=cmd_config)
+    s.set_defaults(func=cmd_config, config_cmd="show")
 
     s = sub.add_parser("list", help="карточки")
     s.add_argument("--module", "-m")
@@ -455,8 +556,8 @@ def build_parser() -> argparse.ArgumentParser:
     ms.set_defaults(func=cmd_module)
 
     s = sub.add_parser("serve", help="поднять веб-доску")
-    s.add_argument("--host", default="0.0.0.0")
-    s.add_argument("--port", type=int, default=8770)
+    s.add_argument("--host", help="адрес прослушивания (по умолчанию из конфига)")
+    s.add_argument("--port", type=int, help="порт (по умолчанию из конфига)")
     s.set_defaults(func=cmd_serve)
 
     s = sub.add_parser("json", help="выгрузить доску в JSON")
@@ -470,6 +571,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except BoardError as exc:
+        return die(str(exc))
+    except cfgmod.ConfigError as exc:
         return die(str(exc))
     except gitlink.GitError as exc:
         return die(f"git: {exc}")

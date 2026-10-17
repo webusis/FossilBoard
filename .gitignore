@@ -3,3 +3,8 @@ __pycache__/
 .venv/
 .DS_Store
 logs/*.png
+
+# конфиг машины больше не лежит в репозитории, но старые клоны могут его тащить
+.board/projects.json
+
+# скриншоты и логи прогонов — наружу, в /home/dipsi/scripts/fossilboard/logs/

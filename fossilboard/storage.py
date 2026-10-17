@@ -20,7 +20,6 @@ from . import SCHEMA_VERSION
 
 BOARD_DIRNAME = ".board"
 BOARD_FILE = "board.json"
-REGISTRY_FILE = "projects.json"
 
 DEFAULT_COLUMNS = [
     {"id": "backlog", "name": "Бэклог", "wip_limit": None},
@@ -52,14 +51,6 @@ def board_path(repo_path: str | Path) -> Path:
 def tool_root() -> Path:
     """Корень установленного пакета (репозиторий FossilBoard)."""
     return Path(__file__).resolve().parent.parent
-
-
-def registry_path() -> Path:
-    """Реестр проектов лежит в репе самого FossilBoard — и в git."""
-    env = os.environ.get("FOSSILBOARD_REGISTRY")
-    if env:
-        return Path(env).expanduser().resolve()
-    return tool_root() / BOARD_DIRNAME / REGISTRY_FILE
 
 
 def safe_name(name: str, fallback: str = "file") -> str:
@@ -182,47 +173,6 @@ def init_board(repo: str | Path, project_id: str, name: str, task_prefix: str | 
 
 def save_board(repo_path: str | Path, data: dict) -> None:
     atomic_write_json(board_path(repo_path), data)
-
-
-# --------------------------------------------------------------------------
-# реестр проектов
-# --------------------------------------------------------------------------
-
-def load_registry() -> dict:
-    path = registry_path()
-    if not path.exists():
-        return {"projects": []}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise BoardError(f"{path} — битый JSON ({exc.msg})") from exc
-    data.setdefault("projects", [])
-    return data
-
-
-def save_registry(data: dict) -> None:
-    atomic_write_json(registry_path(), data)
-
-
-def register_project(project_id: str, name: str, repo: str | Path) -> dict:
-    """Добавить проект в реестр (id уникален, репо — один и тот же путь)."""
-    repo = str(Path(repo).expanduser().resolve())
-    reg = load_registry()
-    for proj in reg["projects"]:
-        if proj["id"].lower() == project_id.lower():
-            proj.update({"name": name, "repo_path": repo})
-            save_registry(reg)
-            return proj
-    proj = {"id": project_id.upper(), "name": name, "repo_path": repo, "added_at": now_iso()}
-    reg["projects"].append(proj)
-    save_registry(reg)
-    return proj
-
-
-def unregister_project(project_id: str) -> None:
-    reg = load_registry()
-    reg["projects"] = [p for p in reg["projects"] if p["id"].lower() != project_id.lower()]
-    save_registry(reg)
 
 
 # --------------------------------------------------------------------------
