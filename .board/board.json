@@ -159,8 +159,8 @@
           "size": 131133
         }
       ],
-      "closed_at": null,
-      "column_id": "wip",
+      "closed_at": "2026-10-17T10:51:49+00:00",
+      "column_id": "done",
       "created_at": "2026-10-17T10:48:11+00:00",
       "description": "Колонки, перетаскивание мышью и кнопками, фильтры, тёмная тема Yaru, инлайновые SVG-иконки.",
       "estimate": 6.0,
@@ -184,6 +184,11 @@
           "at": "2026-10-17T10:49:28+00:00",
           "kind": "attach",
           "payload": "FB-4-board.png"
+        },
+        {
+          "at": "2026-10-17T10:51:49+00:00",
+          "kind": "closed",
+          "payload": ""
         }
       ],
       "id": "FB-4",
@@ -191,7 +196,7 @@
       "parent_id": null,
       "session_label": "вечер",
       "title": "UI: доска, карточка, drag&drop, Yaru Dark",
-      "updated_at": "2026-10-17T10:49:28+00:00"
+      "updated_at": "2026-10-17T10:51:49+00:00"
     },
     {
       "attachments": [],
@@ -234,8 +239,8 @@
           "size": 104357
         }
       ],
-      "closed_at": null,
-      "column_id": "review",
+      "closed_at": "2026-10-17T10:51:49+00:00",
+      "column_id": "done",
       "created_at": "2026-10-17T10:48:11+00:00",
       "description": "Файл копируется в .board/attachments/<id>/, картинка открывается в карточке, путь копируется в буфер.",
       "estimate": 3.0,
@@ -264,6 +269,11 @@
           "at": "2026-10-17T10:49:30+00:00",
           "kind": "attach",
           "payload": "FB-6-attachments-live.png"
+        },
+        {
+          "at": "2026-10-17T10:51:49+00:00",
+          "kind": "closed",
+          "payload": ""
         }
       ],
       "id": "FB-6",
@@ -271,12 +281,19 @@
       "parent_id": null,
       "session_label": "ночь",
       "title": "Вложения: drag&drop и просмотр картинок в карточке",
-      "updated_at": "2026-10-17T10:49:30+00:00"
+      "updated_at": "2026-10-17T10:51:49+00:00"
     },
     {
-      "attachments": [],
-      "closed_at": null,
-      "column_id": "backlog",
+      "attachments": [
+        {
+          "added_at": "2026-10-17T10:51:53+00:00",
+          "name": "FB-7-final.png",
+          "path": "attachments/FB-7/FB-7-final.png",
+          "size": 71819
+        }
+      ],
+      "closed_at": "2026-10-17T10:51:48+00:00",
+      "column_id": "done",
       "created_at": "2026-10-17T10:48:12+00:00",
       "description": "Список внутри родителя с прогрессом N / M, состояние сворачивания в localStorage.",
       "estimate": null,
@@ -285,6 +302,16 @@
           "at": "2026-10-17T10:48:12+00:00",
           "kind": "created",
           "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T10:51:48+00:00",
+          "kind": "closed",
+          "payload": ""
+        },
+        {
+          "at": "2026-10-17T10:51:53+00:00",
+          "kind": "attach",
+          "payload": "FB-7-final.png"
         }
       ],
       "id": "FB-7",
@@ -292,12 +319,12 @@
       "parent_id": null,
       "session_label": null,
       "title": "Саб-задачи: прогресс и сворачивание",
-      "updated_at": "2026-10-17T10:48:12+00:00"
+      "updated_at": "2026-10-17T10:51:53+00:00"
     },
     {
       "attachments": [],
-      "closed_at": null,
-      "column_id": "ready",
+      "closed_at": "2026-10-17T10:51:49+00:00",
+      "column_id": "done",
       "created_at": "2026-10-17T10:48:12+00:00",
       "description": "Быстрый старт, схема данных, git-привязка, все команды CLI, ограничения.",
       "estimate": null,
@@ -311,6 +338,11 @@
           "at": "2026-10-17T10:48:18+00:00",
           "kind": "moved",
           "payload": "backlog → ready"
+        },
+        {
+          "at": "2026-10-17T10:51:49+00:00",
+          "kind": "closed",
+          "payload": ""
         }
       ],
       "id": "FB-8",
@@ -318,12 +350,12 @@
       "parent_id": null,
       "session_label": null,
       "title": "README и CREDITS",
-      "updated_at": "2026-10-17T10:48:18+00:00"
+      "updated_at": "2026-10-17T10:51:49+00:00"
     },
     {
       "attachments": [],
-      "closed_at": null,
-      "column_id": "backlog",
+      "closed_at": "2026-10-17T10:51:47+00:00",
+      "column_id": "done",
       "created_at": "2026-10-17T10:48:15+00:00",
       "description": "",
       "estimate": 0.5,
@@ -332,6 +364,11 @@
           "at": "2026-10-17T10:48:15+00:00",
           "kind": "created",
           "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T10:51:47+00:00",
+          "kind": "closed",
+          "payload": ""
         }
       ],
       "id": "FB-9",
@@ -339,12 +376,12 @@
       "parent_id": "FB-7",
       "session_label": null,
       "title": "Прогресс N / M по column_id == done",
-      "updated_at": "2026-10-17T10:48:15+00:00"
+      "updated_at": "2026-10-17T10:51:47+00:00"
     },
     {
       "attachments": [],
-      "closed_at": null,
-      "column_id": "backlog",
+      "closed_at": "2026-10-17T10:51:47+00:00",
+      "column_id": "done",
       "created_at": "2026-10-17T10:48:15+00:00",
       "description": "",
       "estimate": 0.5,
@@ -353,6 +390,11 @@
           "at": "2026-10-17T10:48:15+00:00",
           "kind": "created",
           "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T10:51:47+00:00",
+          "kind": "closed",
+          "payload": ""
         }
       ],
       "id": "FB-10",
@@ -360,12 +402,12 @@
       "parent_id": "FB-7",
       "session_label": null,
       "title": "Сворачивание с состоянием в localStorage",
-      "updated_at": "2026-10-17T10:48:15+00:00"
+      "updated_at": "2026-10-17T10:51:47+00:00"
     },
     {
       "attachments": [],
-      "closed_at": null,
-      "column_id": "backlog",
+      "closed_at": "2026-10-17T10:51:48+00:00",
+      "column_id": "done",
       "created_at": "2026-10-17T10:48:15+00:00",
       "description": "",
       "estimate": 0.5,
@@ -374,6 +416,11 @@
           "at": "2026-10-17T10:48:15+00:00",
           "kind": "created",
           "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T10:51:48+00:00",
+          "kind": "closed",
+          "payload": ""
         }
       ],
       "id": "FB-11",
@@ -381,7 +428,7 @@
       "parent_id": "FB-7",
       "session_label": null,
       "title": "Скрытие саб-задач при активном поиске",
-      "updated_at": "2026-10-17T10:48:15+00:00"
+      "updated_at": "2026-10-17T10:51:48+00:00"
     },
     {
       "attachments": [],
@@ -419,8 +466,8 @@
           "size": 112416
         }
       ],
-      "closed_at": null,
-      "column_id": "wip",
+      "closed_at": "2026-10-17T10:51:48+00:00",
+      "column_id": "done",
       "created_at": "2026-10-17T10:48:36+00:00",
       "description": "Саб-задача показывается и внутри родителя (вложенным списком), и отдельной карточкой в своей колонке. В Бэклоге FB-7 тянет на себя FB-9..FB-11 дважды.",
       "estimate": 1.0,
@@ -444,6 +491,11 @@
           "at": "2026-10-17T10:49:28+00:00",
           "kind": "attach",
           "payload": "FB-13-after.png"
+        },
+        {
+          "at": "2026-10-17T10:51:48+00:00",
+          "kind": "closed",
+          "payload": ""
         }
       ],
       "id": "FB-13",
@@ -451,7 +503,7 @@
       "parent_id": null,
       "session_label": null,
       "title": "Баг UI: саб-задачи дублируются в колонке",
-      "updated_at": "2026-10-17T10:49:28+00:00"
+      "updated_at": "2026-10-17T10:51:48+00:00"
     },
     {
       "attachments": [],
