@@ -147,11 +147,18 @@ async function loadProjects() {
   const sel = $('#project-select');
   sel.innerHTML = state.projects
     .map((p) => `<option value="${esc(p.id)}">${esc(p.id)} · ${esc(p.name)}</option>`).join('');
-  const pick = data.current && state.projects.some((p) => p.repo_path === data.current)
-    ? (state.projects.find((p) => p.repo_path === data.current) || {}).id
-    : (state.projects[0] || {}).id;
-  state.current = pick;
-  if (pick) sel.value = pick;
+  // текущий проект нельзя сбрасывать на проект сервера: loadProjects зовут
+  // открытие панели модулей и перезагрузка, и пользовательский выбор
+  // перескакивал на ту доску, с которой запущен сервер (#FB-20)
+  const ids = state.projects.map((p) => p.id);
+  const keep = state.current && ids.includes(state.current);
+  if (!keep) {
+    const fallback = data.current && state.projects.some((p) => p.repo_path === data.current)
+      ? state.projects.find((p) => p.repo_path === data.current).id
+      : (state.projects[0] || {}).id;
+    state.current = fallback || '';
+  }
+  if (state.current) sel.value = state.current;
   $('#version').textContent = data.version ? `v${data.version}` : '';
 }
 

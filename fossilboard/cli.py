@@ -433,7 +433,18 @@ def cmd_module(args: argparse.Namespace) -> int:
 def cmd_serve(args: argparse.Namespace) -> int:
     from .server import ServeError, serve
     cfg = get_config()
-    repo = resolve_repo(args)
+    # серверу конкретный проект не нужен: он показывает список и работает с
+    # любым через ?project=. Если проектов несколько, это не ошибка, а
+    # выбор пользователя в шапке доски
+    try:
+        repo = resolve_repo(args)
+    except BoardError:
+        repo = None
+        if args.project:
+            print(f"проект {args.project} не найден в конфиге", file=sys.stderr)
+        else:
+            print("в конфиге несколько проектов — доска покажет их все, "
+                  "переключение в шапке")
     host, port = cfgmod.effective_server(cfg, args.host, args.port)
     try:
         return serve(repo=repo, host=host, port=port, cfg=cfg)

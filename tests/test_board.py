@@ -1208,5 +1208,30 @@ class TestWebMarkup(TempRepoCase):
         self.assertNotIn("fonts.googleapis", html)
 
 
+def test_serve_starts_with_several_projects(self):
+        """Серверу не нужен проект по умолчанию: он показывает их все."""
+        second = self.tmp / "second"
+        second.mkdir()
+        git(second, "init", "-q")
+        init_board(second, "SEC", "Второй проект")
+        self.run_cfg("config", "add-project", "SEC", "Второй проект", "--repo", str(second))
+
+        from fossilboard import cli as cli_mod
+        from fossilboard import server as server_mod
+        started = {}
+
+        def fake_serve(repo=None, host=None, port=None, cfg=None):
+            started.update(repo=repo, cfg=cfg)
+            return 0
+
+        with mock.patch.dict(os.environ, self.env), \
+                mock.patch.object(server_mod, "serve", fake_serve):
+            code = cli_mod.main(["serve"])
+        self.assertEqual(code, 0, "serve не должен падать из-за нескольких проектов")
+        self.assertIsNone(started.get("repo"),
+                          "без явного выбора сервер работает со всеми проектами")
+        self.assertEqual(len(started["cfg"]["projects"]), 2)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
