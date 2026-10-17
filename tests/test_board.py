@@ -51,8 +51,15 @@ class TempRepoCase(unittest.TestCase):
         git(self.repo, "config", "user.email", "t@example.com")
         git(self.repo, "config", "user.name", "Тест")
         self.data = init_board(self.repo, self.prefix, self.board_name)
+        # каждый тест обязан работать со своим конфигом: иначе поднимет
+        # projects/attach из теста и уедет в боевой ~/.config/fossilboard,
+        # после чего доска Артёма показывает мусорные проекты из /tmp
+        self._env_guard = mock.patch.dict(
+            os.environ, {"FOSSILBOARD_CONFIG": str(self.tmp / "config.json")})
+        self._env_guard.start()
 
     def tearDown(self):
+        self._env_guard.stop()
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def save(self):
@@ -980,6 +987,16 @@ class TestConfigLookup(TempRepoCase):
         self.assertIn("_comment", data, "в шаблоне должны быть пояснения")
 
     def test_local_config_wins_over_home(self):
+        # страховка фикстуры ставит FOSSILBOARD_CONFIG — для проверки порядка
+        # поиска его надо убрать, иначе верхним будет именно он
+        saved = os.environ.pop("FOSSILBOARD_CONFIG", None)
+        try:
+            self._check_local_vs_home()
+        finally:
+            if saved is not None:
+                os.environ["FOSSILBOARD_CONFIG"] = saved
+
+    def _check_local_vs_home(self):
         with mock.patch.dict(os.environ, {"HOME": str(self.tmp / "home")}, clear=False):
             home = config_mod.user_config_path()
             home.parent.mkdir(parents=True, exist_ok=True)
