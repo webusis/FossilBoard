@@ -125,6 +125,7 @@ def attach(cfg: dict, path_str: str, project_id: str | None = None,
            name: str | None = None, create: bool = False) -> dict:
     """Открыть существующую репу или создать новую. Возвращает проект для UI."""
     path = expand(path_str)
+    board_created = False
     if path.exists() and not path.is_dir():
         raise RepoError(f"{path} — это файл, а не каталог")
     if create:
@@ -145,11 +146,23 @@ def attach(cfg: dict, path_str: str, project_id: str | None = None,
         if not board_path(path).is_file():
             prefix = (project_id or suggest_id(path, [p["id"] for p in cfg.get("projects", [])]))
             init_board(path, prefix, name or path.name, task_prefix=prefix)
+            board_created = True
     else:
         if not path.is_dir():
             raise RepoError(f"нет такого каталога: {path}")
         if not is_git_repo(path):
             raise RepoError(f"{path} — не git-репозиторий (нет .git)")
+        if not board_path(path).is_file():
+            # Репу открывают, а доски в ней нет. Если человек ввёл префикс —
+            # создаём доску прямо здесь; не вводил — объясняем, что делать.
+            if not project_id:
+                raise RepoError(
+                    f"в {path} нет доски (.board/board.json).\n"
+                    f"Создать её:  board.py init --id <PREFIX> --name \"<имя>\" --repo {path}"
+                )
+            prefix = project_id
+            init_board(path, prefix, name or path.name, task_prefix=prefix)
+            board_created = True
 
     if board_path(path).is_file():
         data = load_board(path)
@@ -162,11 +175,8 @@ def attach(cfg: dict, path_str: str, project_id: str | None = None,
     elif create:
         raise RepoError(f"доска не создалась: {board_path(path)}")
     else:
-        raise RepoError(
-            f"в {path} нет доски (.board/board.json).\n"
-            f"Создать её:  board.py init --id <PREFIX> --name \"<имя>\" --repo {path}"
-        )
+        raise RepoError(f"в {path} нет доски (.board/board.json)")
     proj = cfgmod.upsert_project(cfg, project_id or suggest_id(path, []), name or path.name,
                                  str(path))
     cfgmod.save(cfg)
-    return {"project": proj, "info": describe(path)}
+    return {"project": proj, "info": describe(path), "board_created": board_created}

@@ -743,13 +743,15 @@ async function openRepoDialog(create) {
   repoState.create = create;
   repoDialog.querySelector('#repo-title').textContent = create ? 'Новая репа с доской' : 'Открыть репу';
   $('#repo-ok').textContent = create ? 'создать' : 'открыть';
-  $('#repo-id').closest('.repo-field').hidden = !create;
-  $('#repo-name').closest('.repo-field').hidden = !create;
+  // поля префикса и имени нужны в обоих режимах: если открывают репу без
+  // доски, доска досоздаётся прямо отсюда
+  $('#repo-id').closest('.repo-field').hidden = false;
+  $('#repo-name').closest('.repo-field').hidden = false;
   const input = $('#repo-new-path');
   input.value = '';
   $('#repo-status').textContent = create
     ? 'Папка будет создана, внутри — git init и .board/board.json'
-    : 'Укажи путь к существующей репе: папка должна быть git-репозиторием';
+    : 'Укажи путь к репе. Если доски в ней нет — заполните префикс и имя, и мы её создадим';
   $('#repo-status').className = 'repo-status';
   $('#repo-suggest').hidden = true;
   repoDialog.showModal();
@@ -794,10 +796,17 @@ async function probeRepo() {
     } else if (!info.is_git) {
       bits.push(repoState.create ? 'не git-репозиторий — сделаем git init' : 'не git-репозиторий');
     } else if (!info.has_board) {
-      bits.push(repoState.create ? 'доски нет — создадим' : 'доски нет');
+      bits.push(repoState.create ? 'доски нет — создадим'
+                                 : 'доски нет — создадим по префиксу и имени');
     }
     if (info.board_ok === false) bits.push(`доска сломана: ${info.board_error || ''}`);
     if (!bits.length) bits.push(repoState.create ? 'путь свободен' : 'путь готов');
+    // открываем репу без доски: кнопка должна честно говорить, что сейчас сделает
+    const okBtn = $('#repo-ok');
+    okBtn.textContent = (info.exists && info.is_dir && !info.has_board
+                         && info.board_ok !== false)
+      ? 'создать доску'
+      : (repoState.create ? 'создать' : 'открыть');
     status.textContent = bits.join(' · ');
     status.className = 'repo-status' + (info.board_ok === false ? ' err' : '');
   } catch (err) {
@@ -863,7 +872,9 @@ $('#repo-form').addEventListener('submit', async (e) => {
     await loadBoard();
     closeDetail();
     repoDialog.close();
-    toast(`${repoState.create ? 'создано' : 'открыто'}: ${result.project.name} → ${result.project.repo_path}`);
+    const verb = result.board_created ? 'доска создана'
+      : (repoState.create ? 'создано' : 'открыто');
+    toast(`${verb}: ${result.project.name} → ${result.project.repo_path}`);
   } catch (err) {
     const status = $('#repo-status');
     status.textContent = err.message;

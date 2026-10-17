@@ -948,6 +948,32 @@ class TestRepoManager(TempRepoCase):
         self.assertIn("нет доски", str(ctx.exception))
         self.assertIn("board.py init", str(ctx.exception), "подсказка с командой обязательна")
 
+    def test_open_boardless_repo_creates_board_when_prefix_given(self):
+        """Репу без доски можно открыть и сразу завести доску прямо из диалога."""
+        nopanel = self.tmp / "rezka"
+        nopanel.mkdir()
+        git(nopanel, "init", "-q")
+        (nopanel / "main.py").write_text("код\n", encoding="utf-8")
+
+        result = repolib.attach(self.cfg, str(nopanel), project_id="RZ",
+                                name="Резка", create=False)
+        self.assertEqual(result["project"]["id"], "RZ")
+        self.assertEqual(result["project"]["name"], "Резка")
+        board = load_board(nopanel)
+        self.assertEqual(board["project"]["id"], "RZ")
+        self.assertEqual(board["project"]["repo_path"], str(nopanel.resolve()))
+        self.assertEqual((nopanel / "main.py").read_text(encoding="utf-8"), "код\n",
+                         "чужие файлы репы не трогаем")
+
+    def test_existing_board_wins_over_typed_prefix(self):
+        """Если доска уже есть, введённый префикс её не переименовывает."""
+        stale = load_board(self.repo)
+        keep = stale["project"]["id"]
+        repolib.attach(self.cfg, str(self.repo), project_id="ЧТОТО", name="Другое",
+                       create=False)
+        self.assertEqual(load_board(self.repo)["project"]["id"], keep)
+        self.assertEqual(config_mod.load(self.cfg_path)["projects"][0]["id"], keep)
+
     def test_open_missing_path_refused(self):
         with self.assertRaises(repolib.RepoError) as ctx:
             repolib.attach(self.cfg, str(self.tmp / "нет-такого"), create=False)
@@ -1085,6 +1111,32 @@ class TestRepoApi(TempRepoCase):
         self.assertEqual(status, 400)
         self.assertIn("не git-репозиторий", data["error"])
 
+    def test_api_creates_board_in_boardless_repo(self):
+        """Сценарий из интерфейса: открываете репу без доски и жмёте «создать»."""
+        target = self.tmp / "rezka-miner"
+        target.mkdir()
+        git(target, "init", "-q")
+        status, data = self.post(self.base + "/api/projects",
+                                 {"path": str(target), "create": False,
+                                  "project_id": "RZ", "name": "Резка"})
+        self.assertEqual(status, 201, data)
+        self.assertEqual(data["project"]["id"], "RZ")
+        self.assertTrue(data["board_created"], "интерфейс должен знать, что доска создана")
+        self.assertTrue(storage.board_path(target).is_file())
+
+    def test_api_reports_board_not_created_when_opening_ready_repo(self):
+        status, data = self.post(self.base + "/api/projects", {"path": str(self.repo)})
+        self.assertEqual(status, 201, data)
+        self.assertFalse(data["board_created"])
+
+    def test_api_without_prefix_keeps_helpful_error(self):
+        target = self.tmp / "no-board"
+        target.mkdir()
+        git(target, "init", "-q")
+        status, data = self.post(self.base + "/api/projects", {"path": str(target)})
+        self.assertEqual(status, 400)
+        self.assertIn("board.py init", data["error"])
+
     def test_browse_endpoint(self):
         (self.tmp / "idea").mkdir()
         status, data = self.get(self.base + f"/api/browse?path={quote(str(self.tmp))}")
@@ -1120,15 +1172,19 @@ class TestWebMarkup(TempRepoCase):
         self.assertEqual(missing, [], f"app.js обращается к несуществующим элементам: {missing}")
 
     def test_hidden_attribute_is_not_overridden_by_display(self):
-        """Поля, скрытые через hidden, должны реально исчезать.
+        """Скрытие через hidden должно реально работать, и поля репы не прячутся.
 
-        display:flex у .repo-field перебивал атрибут hidden, и «префикс» с
-        «именем» оставались видимыми в режиме открытия репы.
+        display:flex у .repo-field перебивал атрибут hidden — поля «префикс» и
+        «имя» оставались видимыми. Их прятать перестали намеренно: при открытии
+        репы без доски доска досоздаётся прямо из диалога, так что поля нужны
+        в обоих режимах.
         """
         css = (REPO_ROOT / "fossilboard" / "web" / "style.css").read_text(encoding="utf-8")
         self.assertRegex(css, r"\[hidden\]\s*\{[^}]*display:\s*none\s*!important")
         app = (REPO_ROOT / "fossilboard" / "web" / "app.js").read_text(encoding="utf-8")
-        self.assertIn("closest('.repo-field').hidden = !create", app)
+        self.assertNotIn(".hidden = !create", app,
+                         "поля префикса и имени нужны в обоих режимах")
+        self.assertIn("closest('.repo-field').hidden = false", app)
 
     def test_cancel_button_is_not_swallowed(self):
         """«Отмена» закрывает диалог: submit с value=cancel перехватывать нельзя."""

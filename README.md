@@ -8,7 +8,7 @@
 [![license](https://img.shields.io/badge/license-MIT-77216F?style=flat-square)](LICENSE)
 [![python](https://img.shields.io/badge/python-3.14-E95420?style=flat-square)](https://docs.python.org/3.14/)
 [![dependencies](https://img.shields.io/badge/dependencies-0-4C9A2A?style=flat-square)](#зачем-так)
-[![tests](https://img.shields.io/badge/tests-90%20passed-19B6EE?style=flat-square)](#тесты)
+[![tests](https://img.shields.io/badge/tests-95%20passed-19B6EE?style=flat-square)](#тесты)
 [![theme](https://img.shields.io/badge/theme-Yaru%20Dark-300A24?style=flat-square)](#оформление)
 
 </div>
@@ -51,7 +51,8 @@ cd FossilBoard
   и положит `.board/board.json`. Префикс и имя карточек можно задать там же,
   а можно оставить пустым — тогда префикс возьмётся из имени каталога;
 - **📂** — открыть существующую репу: путь руками, доска только зарегистрирует
-  его в конфиге и ничего не тронет.
+  его в конфиге и ничего не тронет. Если доски в репе нет, введите префикс и имя —
+  кнопка сама переименуется в «создать доску» и создаст её прямо там.
 
 Пока печатаете путь, снизу показывается содержимое того каталога, который вы
 набираете (если его нет — его родителя), служебные папки вроде `__pycache__`
@@ -206,7 +207,7 @@ FossilBoard/
 │   ├── server.py             REST поверх http.server
 │   ├── cli.py                команды терминала
 │   └── web/                  index.html · app.js · style.css — без сборки
-├── tests/test_board.py       90 тестов на stdlib unittest
+├── tests/test_board.py       95 тестов на stdlib unittest
 ├── docs/                     скриншоты для README
 └── .board/                   данные этой репы (у других проектов — у них в своих)
     ├── board.json            источник правды
@@ -232,7 +233,7 @@ git -C ~/projects/k2c-proto show HEAD:.board/board.json > ~/projects/k2c-proto/.
 ## Тесты
 
 ```bash
-python3 -m unittest discover -s tests -v      # 90 тестов, ~30 с
+python3 -m unittest discover -s tests -v      # 95 тестов, ~32 с
 ```
 
 Покрыты: CRUD, запрет переиспользования ID, перемещение и прогресс саб-задач,
