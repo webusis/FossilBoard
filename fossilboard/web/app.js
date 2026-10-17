@@ -204,9 +204,18 @@ function visibleTasks() {
   const b = state.board;
   if (!b) return [];
   const { search, module, session, parents } = state.filters;
-  const needle = search.toLowerCase().trim();
+  // запрос разбирается на слова: «модуль данных» должен находить
+  // «Ядро: модель данных», а не требовать точной подстроки
+  const words = search.toLowerCase().split(/\s+/).filter(Boolean);
+  // ID ищем точно: иначе «FB-1» находит ещё и FB-10, FB-11, FB-12…
+  const ids = words.filter((w) => /^[a-z]{1,8}-\d+$/.test(w));
+  const text = words.filter((w) => !ids.includes(w));
   return b.tasks.filter((t) => {
-    if (needle && !(`${t.title} ${t.description || ''}`.toLowerCase().includes(needle))) return false;
+    if (ids.length && !ids.includes(String(t.id).toLowerCase())) return false;
+    if (text.length) {
+      const hay = `${t.title} ${t.description || ''}`.toLowerCase();
+      if (!text.every((w) => hay.includes(w))) return false;
+    }
     if (module && t.module_id !== module) return false;
     if (session && t.session_label !== session) return false;
     if (parents && !b.tasks.some((c) => c.parent_id === t.id)) return false;
@@ -232,10 +241,15 @@ function render() {
       if (hasFilter && !shown.has(t.id) && !kidsShown(t)) return '';
       return renderCard(t, b, collapsed);
     }).join('');
+    // при активном фильтре счётчик обязан показывать видимое, иначе
+    // «Готово 14» при двух карточках на экране сбивает с толку
+    const shownTops = hasFilter
+      ? tops.filter((t) => shown.has(t.id) || kidsShown(t)).length
+      : tops.length;
     return `<section class="col ${wip.over ? 'over-limit' : ''}" data-column="${esc(col.id)}">
       <header class="col-head">
         <span class="name">${esc(col.name)}</span>
-        <span class="count">${tops.length}</span>
+        <span class="count">${shownTops}</span>
         ${wip.wip_limit != null
           ? `<span class="wip-badge" title="всего карточек в колонке, включая саб-задачи">WIP ${wip.count}/${wip.wip_limit}</span>` : ''}
       </header>
@@ -249,8 +263,12 @@ function render() {
 
 /** Родитель виден, если совпал сам или совпала хотя бы одна его саб-задача. */
 function kidsShown(task) {
+  // именно state.visible, а не локальная переменная render(): ссылка на
+  // `shown` из другой функции роняла весь рендер с ReferenceError, и доска
+  // молча показывала весь список, как будто фильтра не было
+  const visible = state.visible || new Set();
   return (state.board.tasks || [])
-    .filter((t) => t.parent_id === task.id && shown.has(t.id)).length > 0;
+    .filter((t) => t.parent_id === task.id && visible.has(t.id)).length > 0;
 }
 
 function subtaskProgress(id) {
