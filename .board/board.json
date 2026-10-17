@@ -27,7 +27,7 @@
     }
   ],
   "counters": {
-    "task": 14
+    "task": 15
   },
   "modules": [
     {
@@ -530,6 +530,55 @@
       "session_label": null,
       "title": "Баг CLI: `module color` падал с AttributeError",
       "updated_at": "2026-10-17T10:51:33+00:00"
+    },
+    {
+      "attachments": [
+        {
+          "added_at": "2026-10-17T10:52:14+00:00",
+          "name": "FB-15-after.png",
+          "path": "attachments/FB-15/FB-15-after.png",
+          "size": 80294
+        },
+        {
+          "added_at": "2026-10-17T10:52:14+00:00",
+          "name": "FB-15-before.png",
+          "path": "attachments/FB-15/FB-15-before.png",
+          "size": 71819
+        }
+      ],
+      "closed_at": null,
+      "column_id": "wip",
+      "created_at": "2026-10-17T10:52:01+00:00",
+      "description": "Пять колонок по 290px + отступы не влезают в 1440px — «Готово» уезжал за правый край и текст карточек резался. Колонки должны делить ширину и ужиматься, а не упираться в фиксированный размер.",
+      "estimate": 0.5,
+      "events": [
+        {
+          "at": "2026-10-17T10:52:01+00:00",
+          "kind": "created",
+          "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-17T10:52:02+00:00",
+          "kind": "moved",
+          "payload": "backlog → wip"
+        },
+        {
+          "at": "2026-10-17T10:52:14+00:00",
+          "kind": "attach",
+          "payload": "FB-15-before.png"
+        },
+        {
+          "at": "2026-10-17T10:52:14+00:00",
+          "kind": "attach",
+          "payload": "FB-15-after.png"
+        }
+      ],
+      "id": "FB-15",
+      "module_id": "0474d612",
+      "parent_id": null,
+      "session_label": null,
+      "title": "Баг UI: пятая колонка обрезалась на широком экране",
+      "updated_at": "2026-10-17T10:52:14+00:00"
     }
   ]
 }

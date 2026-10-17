@@ -139,7 +139,9 @@ input.color { width: 44px; padding: 2px; height: 28px; }
 }
 .col {
   display: flex; flex-direction: column; min-height: 0;
-  width: 290px; max-height: 100%; flex: none;
+  /* колонки делят ширину окна и ужимаются; фиксированная ширина выталкивала
+     пятую колонку за правый край на 1440px (#FB-15) */
+  flex: 1 1 0; min-width: 240px; max-width: 420px; max-height: 100%;
   background: var(--surface);
   border: 1px solid var(--yaru-border-color);
   border-radius: var(--radius);
@@ -280,7 +282,7 @@ pre.diff {
 @media (max-width: 760px) {
   .topbar { flex-wrap: wrap; height: auto; padding: 6px 8px; gap: 6px; }
   .repo-path { max-width: 24ch; }
-  .col { width: 82vw; }
+  .col { flex: 0 0 82vw; max-width: none; }
   .detail { width: 100vw; }
   .board { padding: 8px; }
 }
