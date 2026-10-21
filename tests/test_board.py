@@ -1813,6 +1813,30 @@ class TestSyncCommand(TempRepoCase):
         self.assertEqual(len(fresh["gotchas"]), 1)
         self.assertEqual(fresh["gotchas"][0]["text"], "грабля отдельной строкой")
 
+    def test_flag_on_own_line_goes_to_first_card_only(self):
+        first = self.new_task("Первая")
+        second = self.new_task("Вторая")
+        self.save()
+        self.commit(f"feat: работа по двум карточкам ({first['id']}) ({second['id']})\n\n"
+                    f"#rake грабля отдельной строкой")
+        self.run_cli("sync")
+        board = load_board(self.repo)
+        by_id = {t["id"]: t for t in board["tasks"]}
+        self.assertEqual(len(by_id[first["id"]]["gotchas"]), 1)
+        self.assertEqual(by_id[second["id"]].get("gotchas"), None,
+                         "вторая карточка в заголовке не должна получать граблю")
+
+    def test_flag_next_to_card_goes_to_that_card(self):
+        first = self.new_task("Первая")
+        second = self.new_task("Вторая")
+        self.save()
+        self.commit(f"feat: {first['id']} #rake грабля своей строки")
+        self.run_cli("sync")
+        board = load_board(self.repo)
+        by_id = {t["id"]: t for t in board["tasks"]}
+        self.assertEqual(len(by_id[first["id"]]["gotchas"]), 1)
+        self.assertEqual(by_id[second["id"]].get("gotchas"), None)
+
     def test_sync_unknown_card_is_clear_error(self):
         proc = self.run_cli("sync", "K2C-999")
         self.assertEqual(proc.returncode, 1)
@@ -1886,6 +1910,16 @@ class TestGitHook(TempRepoCase):
         self.assertIn("чужой хук", proc.stderr)
         self.assertEqual(path.read_text(encoding="utf-8"), original, "чужой хук не тронут")
         self.assertIn("не трогаю", self.run_cli("hook", "remove").stdout)
+
+    def test_init_installs_hook_automatically(self):
+        other = self.tmp / "new-proj"
+        other.mkdir()
+        git(other, "init", "-q")
+        proc = self.run_cli("init", "--id", "NEW", "--name", "Новый проект", "--repo", str(other))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue((other / ".git" / "hooks" / "post-commit").is_file(),
+                        "init ставит хук сам — про него не надо помнить")
+        self.assertIn("хук", proc.stdout)
 
     def test_flags_for_task_reads_only_that_card(self):
         first = self.new_task("Первая")

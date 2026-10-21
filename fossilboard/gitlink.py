@@ -190,17 +190,27 @@ def card_ids_in(text: str, prefix: str) -> list[str]:
     return found
 
 
-def _flags_in_message(message: str, registry: dict) -> list[dict]:
-    """Флаги из сообщения коммита: заголовок — где угодно, тело — с начала строки."""
+def _flags_in_message(message: str, registry: dict, prefix: str = "") -> list[dict]:
+    """Флаги из сообщения коммита: [{flag, text, cards}].
+
+    cards — карточки из той же строки, где стоит флаг. Их нет, если флаг
+    стоит отдельной строкой: тогда грабля достаётся карточке из заголовка.
+    Заголовок разбирается целиком, тело — построчно и только с начала строки.
+    """
     lines = message.splitlines()
-    found = parse_flags(lines[0], registry) if lines else []
-    for line in lines[1:]:
-        found += parse_flags(line, registry, anchored=True)
-    return found
+    out: list[dict] = []
+    for index, line in enumerate(lines):
+        found = parse_flags(line, registry, anchored=index > 0)
+        if not found:
+            continue
+        cards = card_ids_in(line, prefix) if prefix else []
+        for flag in found:
+            out.append({**flag, "cards": cards})
+    return out
 
 
 def commits_with_flags(repo_path: str, flags: dict | None = None,
-                       limit: int = 500) -> list[dict]:
+                       limit: int = 500, prefix: str = "") -> list[dict]:
     """Коммиты репы, в сообщении которых есть флаги-грабли.
 
     Читается полное сообщение (тело коммита тоже) — грабля может быть
@@ -224,7 +234,7 @@ def commits_with_flags(repo_path: str, flags: dict | None = None,
             continue
         # заголовок — флаг где угодно; тело — только если строка начинается
         # с флага, иначе примеры в коде цеплялись бы как грабли
-        found = _flags_in_message(message, registry)
+        found = _flags_in_message(message, registry, prefix)
         if not found:
             continue
         commits.append({
@@ -249,16 +259,20 @@ def collect_gotchas(repo_path: str, data: dict, flags: dict | None = None,
     prefix = (data.get("project", {}).get("config", {}).get("task_prefix")
               or data.get("project", {}).get("id") or "TASK")
     out: list[dict] = []
-    for commit in commits_with_flags(repo_path, registry):
+    for commit in commits_with_flags(repo_path, registry, prefix=prefix):
         # карточка ищется в заголовке коммита — как и привязка. Иначе пример
         # «git commit -m "FB-12 #rake …"» в теле притянул бы чужую карточку
-        cards = card_ids_in(commit["subject"], prefix)
+        subject_cards = card_ids_in(commit["subject"], prefix)
         if only:
-            cards = [c for c in cards if c == only]
-        if not cards:
+            subject_cards = [c for c in subject_cards if c == only]
+        if not subject_cards:
             continue
-        for card in cards:
-            for flag in commit["flags"]:
+        for flag in commit["flags"]:
+            # грабля достаётся первой карточке строки, где стоит флаг, а если
+            # её там нет — первой карточке заголовка. Коммит с двумя хэштегами
+            # не должен сыпать грабли в обе карточки
+            cards = flag.get("cards", [])[:1] or subject_cards[:1]
+            for card in cards:
                 out.append({"card_id": card, "flag": flag["flag"],
                             "text": flag["text"], "commit": commit["short"]})
     return out
