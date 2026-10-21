@@ -153,6 +153,11 @@ def load(path: str | Path | None = None) -> dict:
         if not isinstance(raw, dict):
             raise ConfigError(f"{cfg_path} — ожидался объект JSON")
         data = _deep_merge(data, raw)
+    # путь логов можно переопределить из окружения: тестам нужно, чтобы
+    # хук писал в свой каталог, а не в боевой
+    logs_env = os.environ.get("FOSSILBOARD_LOGS")
+    if logs_env:
+        data.setdefault("paths", {})["logs"] = logs_env
     data["_path"] = str(cfg_path)
     data["_exists"] = cfg_path.exists()
     return data

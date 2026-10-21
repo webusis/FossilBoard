@@ -474,7 +474,10 @@ def cmd_sync(args: argparse.Namespace) -> int:
     не портит: грабля с тем же флагом и тем же текстом уже есть — не пишем.
     """
     repo, data = load(args)
-    registry = cfgmod.flags_registry(get_config())
+    cfg = get_config()
+    registry = cfgmod.flags_registry(cfg)
+    # префиксы известных проектов: по ним отличаем карточку от обычного слова
+    known = [p.get("id") for p in cfg.get("projects", []) if isinstance(p, dict)]
     only = None
     if args.id:
         only = normalize_task_id(data, args.id)
@@ -482,9 +485,10 @@ def cmd_sync(args: argparse.Namespace) -> int:
     if only:
         # только коммиты этой карточки: вся история репы не нужна
         items = [{"card_id": only, **f}
-                 for f in gitlink.flags_for_task(repo, only, registry)]
+                 for f in gitlink.flags_for_task(repo, only, registry,
+                                                known_prefixes=known)]
     else:
-        items = gitlink.collect_gotchas(repo, data, registry)
+        items = gitlink.collect_gotchas(repo, data, registry, known_prefixes=known)
     written = apply_gotchas(data, items)
     for item in written:
         print(f"{item['card_id']} ← #{item['flag']} {item['text']}  ({item['commit']})")

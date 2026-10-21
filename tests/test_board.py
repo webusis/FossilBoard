@@ -54,8 +54,11 @@ class TempRepoCase(unittest.TestCase):
         # каждый тест обязан работать со своим конфигом: иначе поднимет
         # projects/attach из теста и уедет в боевой ~/.config/fossilboard,
         # после чего доска Артёма показывает мусорные проекты из /tmp
+        # логи — в свой временный каталог: иначе тестовый хук писал бы
+        # «K2C-1 ← #rake …» в боевой лог и засорял его чужими проектами
         self._env_guard = mock.patch.dict(
-            os.environ, {"FOSSILBOARD_CONFIG": str(self.tmp / "config.json")})
+            os.environ, {"FOSSILBOARD_CONFIG": str(self.tmp / "config.json"),
+                         "FOSSILBOARD_LOGS": str(self.tmp / "logs")})
         self._env_guard.start()
 
     def tearDown(self):
@@ -76,6 +79,21 @@ class TempRepoCase(unittest.TestCase):
 
     def new_task(self, title="Задача", **kw):
         return add_task(self.data, title, **kw)
+
+    def run_cli(self, *args):
+        env = self.cli_env()
+        cmd = ["python3", str(REPO_ROOT / "board.py"), "--repo", str(self.repo), *args]
+        return subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(REPO_ROOT))
+
+    def commit(self, message: str):
+        """Коммит с автором: тестовый git без user.name коммит не берёт."""
+        env = dict(os.environ, GIT_AUTHOR_NAME="Тест", GIT_AUTHOR_EMAIL="t@example.com",
+                   GIT_COMMITTER_NAME="Тест", GIT_COMMITTER_EMAIL="t@example.com")
+        self._commits = getattr(self, "_commits", 0) + 1
+        (self.repo / "file.txt").write_text(f"правка {self._commits}")
+        git(self.repo, "add", "-A")
+        return subprocess.run(["git", "-C", str(self.repo), "commit", "-m", message],
+                              capture_output=True, text=True, env=env)
 
 
 class TestCrud(TempRepoCase):
@@ -1722,16 +1740,6 @@ class TestFlagParsing(TempRepoCase):
 class TestSyncCommand(TempRepoCase):
     """FB-903: коммит с флагом сам попадает в карточку, повторно — без дублей."""
 
-    def run_cli(self, *args):
-        env = self.cli_env()
-        cmd = ["python3", str(REPO_ROOT / "board.py"), "--repo", str(self.repo), *args]
-        return subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(REPO_ROOT))
-
-    def commit(self, message: str) -> None:
-        self._commits = getattr(self, "_commits", 0) + 1
-        (self.repo / "file.txt").write_text(f"правка {self._commits}")
-        git(self.repo, "add", "-A")
-        git(self.repo, "commit", "-m", message)
 
     def test_commit_flag_lands_in_card(self):
         task = self.new_task("Задача")
@@ -1847,18 +1855,6 @@ class TestSyncCommand(TempRepoCase):
 class TestGitHook(TempRepoCase):
     """FB-906: после коммита грабли подхватываются сами, а не по памяти."""
 
-    def run_cli(self, *args):
-        env = self.cli_env()
-        cmd = ["python3", str(REPO_ROOT / "board.py"), "--repo", str(self.repo), *args]
-        return subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(REPO_ROOT))
-
-    def commit(self, message: str):
-        env = dict(os.environ, GIT_AUTHOR_NAME="Тест", GIT_AUTHOR_EMAIL="t@example.com",
-                   GIT_COMMITTER_NAME="Тест", GIT_COMMITTER_EMAIL="t@example.com")
-        (self.repo / "file.txt").write_text(f"правка {message[:12]}")
-        git(self.repo, "add", "-A")
-        return subprocess.run(["git", "-C", str(self.repo), "commit", "-m", message],
-                              capture_output=True, text=True, env=env)
 
     def test_hook_install_status_remove(self):
         proc = self.run_cli("hook", "install")
@@ -1931,6 +1927,50 @@ class TestGitHook(TempRepoCase):
         self.assertEqual([f["text"] for f in found], ["грабля первой"])
         found_second = gitlink.flags_for_task(str(self.repo), second["id"])
         self.assertEqual([f["text"] for f in found_second], ["грабля второй"])
+
+
+class TestForeignCards(TempRepoCase):
+    """FB-907: грабля про карточку чужого проекта не приписывается нашей."""
+
+    def setUp(self):
+        super().setUp()
+        # реестр проектов: кроме нашего есть чужой проект TTS. Именно по
+        # реестру отличается карточка от обычного слова вроде «UTF-8»
+        cfg = config_mod.load(self.tmp / "config.json")
+        config_mod.upsert_project(cfg, "TTS", "Чужой проект", str(self.tmp / "tts"))
+        config_mod.save(cfg, self.tmp / "config.json")
+
+    def test_gotcha_mentioning_foreign_card_is_ignored(self):
+        task = self.new_task("Моя карточка")
+        self.save()
+        self.commit(f"feat: {task['id']} мелочь\n\n#rake TTS-15: грабля про карточку TTS")
+        self.run_cli("sync")
+        fresh = find_task(load_board(self.repo), task["id"])
+        self.assertEqual(fresh.get("gotchas"), None,
+                         "грабля про чужую карточку не наша")
+
+    def test_ordinary_word_is_not_a_foreign_card(self):
+        task = self.new_task("Моя карточка")
+        self.save()
+        self.commit(f"feat: {task['id']} мелочь\n\n#gotcha кодировка UTF-8 ломается")
+        self.run_cli("sync")
+        fresh = find_task(load_board(self.repo), task["id"])
+        self.assertEqual(len(fresh.get("gotchas") or []), 1,
+                         "«UTF-8» — обычное слово, грабля должна остаться")
+
+    def test_own_card_in_line_still_works(self):
+        task = self.new_task("Моя карточка")
+        self.save()
+        self.commit(f"feat: {task['id']}\n\n#rake {task['id']}: своя грабля")
+        self.run_cli("sync")
+        fresh = find_task(load_board(self.repo), task["id"])
+        self.assertEqual(len(fresh.get("gotchas") or []), 1)
+
+    def test_foreign_card_ids_detector(self):
+        self.assertEqual(gitlink.foreign_card_ids("про TTS-15 и FB-12", ["TTS", "FB"]),
+                         ["TTS-15", "FB-12"])
+        self.assertEqual(gitlink.foreign_card_ids("кодировка UTF-8", ["TTS", "FB"]), [])
+        self.assertEqual(gitlink.foreign_card_ids("ничего тут", ["TTS"]), [])
 
 
 if __name__ == "__main__":

@@ -190,11 +190,37 @@ def card_ids_in(text: str, prefix: str) -> list[str]:
     return found
 
 
-def _flags_in_message(message: str, registry: dict, prefix: str = "") -> list[dict]:
-    """Флаги из сообщения коммита: [{flag, text, cards}].
+# вид номера карточки: префикс заглавными буквами и цифрами, потом номер
+_CARD_SHAPE = re.compile(r"(?<![A-Za-z0-9_-])([A-Z][A-Z0-9]*)-(\d+)(?![A-Za-z0-9_-])")
+
+
+def foreign_card_ids(text: str, known_prefixes) -> list[str]:
+    """Номера карточек ЧУЖИХ проектов, упомянутые в тексте.
+
+    Чужой проект известен по реестру: если префикса нет в реестре — это
+    обычное слово («UTF-8», «X-11»), а не карточка. Иначе грабля про чужую
+    карточку приписывалась бы нашей (FB-907).
+    """
+    known = {str(p).upper() for p in (known_prefixes or [])}
+    if not known:
+        return []
+    found: list[str] = []
+    for match in _CARD_SHAPE.finditer(text):
+        card = f"{match.group(1)}-{match.group(2)}"
+        if match.group(1) in known and card not in found:
+            found.append(card)
+    return found
+
+
+def _flags_in_message(message: str, registry: dict, prefix: str = "",
+                      known_prefixes=None) -> list[dict]:
+    """Флаги из сообщения коммита: [{flag, text, cards, foreign}].
 
     cards — карточки из той же строки, где стоит флаг. Их нет, если флаг
     стоит отдельной строкой: тогда грабля достаётся карточке из заголовка.
+    foreign — номера карточек ЧУЖИХ проектов в этой строке: такая грабля
+    не наша, её не принимаем (FB-907).
+
     Заголовок разбирается целиком, тело — построчно и только с начала строки.
     """
     lines = message.splitlines()
@@ -204,13 +230,15 @@ def _flags_in_message(message: str, registry: dict, prefix: str = "") -> list[di
         if not found:
             continue
         cards = card_ids_in(line, prefix) if prefix else []
+        foreign = foreign_card_ids(line, known_prefixes)
         for flag in found:
-            out.append({**flag, "cards": cards})
+            out.append({**flag, "cards": cards, "foreign": foreign})
     return out
 
 
 def commits_with_flags(repo_path: str, flags: dict | None = None,
-                       limit: int = 500, prefix: str = "") -> list[dict]:
+                       limit: int = 500, prefix: str = "",
+                       known_prefixes=None) -> list[dict]:
     """Коммиты репы, в сообщении которых есть флаги-грабли.
 
     Читается полное сообщение (тело коммита тоже) — грабля может быть
@@ -234,7 +262,7 @@ def commits_with_flags(repo_path: str, flags: dict | None = None,
             continue
         # заголовок — флаг где угодно; тело — только если строка начинается
         # с флага, иначе примеры в коде цеплялись бы как грабли
-        found = _flags_in_message(message, registry, prefix)
+        found = _flags_in_message(message, registry, prefix, known_prefixes)
         if not found:
             continue
         commits.append({
@@ -247,7 +275,7 @@ def commits_with_flags(repo_path: str, flags: dict | None = None,
 
 
 def collect_gotchas(repo_path: str, data: dict, flags: dict | None = None,
-                    only: str | None = None) -> list[dict]:
+                    only: str | None = None, known_prefixes=None) -> list[dict]:
     """Грабли из истории репы: [{card_id, flag, text, commit}].
 
     Флаг без привязки к карточке не принимается: сначала ищем в сообщении
@@ -259,7 +287,8 @@ def collect_gotchas(repo_path: str, data: dict, flags: dict | None = None,
     prefix = (data.get("project", {}).get("config", {}).get("task_prefix")
               or data.get("project", {}).get("id") or "TASK")
     out: list[dict] = []
-    for commit in commits_with_flags(repo_path, registry, prefix=prefix):
+    for commit in commits_with_flags(repo_path, registry, prefix=prefix,
+                                     known_prefixes=known_prefixes):
         # карточка ищется в заголовке коммита — как и привязка. Иначе пример
         # «git commit -m "FB-12 #rake …"» в теле притянул бы чужую карточку
         subject_cards = card_ids_in(commit["subject"], prefix)
@@ -268,6 +297,8 @@ def collect_gotchas(repo_path: str, data: dict, flags: dict | None = None,
         if not subject_cards:
             continue
         for flag in commit["flags"]:
+            if flag.get("foreign"):
+                continue        # грабля про карточку чужого проекта — не наша
             # грабля достаётся первой карточке строки, где стоит флаг, а если
             # её там нет — первой карточке заголовка. Коммит с двумя хэштегами
             # не должен сыпать грабли в обе карточки
@@ -296,7 +327,7 @@ def commit_messages(repo_path: str, hashes: list[str]) -> dict[str, str]:
 
 
 def flags_for_task(repo_path: str, task_id: str, flags: dict | None = None,
-                   limit: int = 50) -> list[dict]:
+                   limit: int = 50, known_prefixes=None) -> list[dict]:
     """Флаги из коммитов ОДНОЙ карточки: [{flag, text, commit}].
 
     Разбираются только её коммиты — не вся история репы. Иначе каждый клик
@@ -309,10 +340,13 @@ def flags_for_task(repo_path: str, task_id: str, flags: dict | None = None,
     if not commits:
         return []
     messages = commit_messages(repo_path, [c["hash"] for c in commits])
+    prefix = task_id.rsplit("-", 1)[0]
     out: list[dict] = []
     for commit in commits:
         message = messages.get(commit["hash"], commit["subject"])
-        for flag in _flags_in_message(message, registry):
+        for flag in _flags_in_message(message, registry, prefix, known_prefixes):
+            if flag.get("foreign"):
+                continue    # грабля про карточку чужого проекта — не наша
             out.append({"flag": flag["flag"], "text": flag["text"],
                         "commit": commit["short"]})
     return out
