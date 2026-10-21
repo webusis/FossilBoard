@@ -11,6 +11,7 @@ from pathlib import Path
 from . import __version__
 from . import config as cfgmod
 from . import gitlink
+from . import hooks
 from .storage import (
     BoardError, add_attempt, add_event, add_gotcha_once, add_module, add_task,
     apply_gotchas, attach_file, board_dir, board_path, column_name, delete_attachment,
@@ -168,7 +169,20 @@ def cmd_init(args: argparse.Namespace) -> int:
     else:
         print(f"доска создана: {path}")
         print(f"проект: {proj['id']} «{proj['name']}» → {proj['repo_path']}")
+    _install_hook_quiet(repo_now)
     return EXIT_OK
+
+
+def _install_hook_quiet(repo_path: str) -> None:
+    """Хук post-commit: грабли из коммитов подхватываются сами.
+
+    Ставится молча, но с подтверждением в выводе — про него не надо помнить.
+    """
+    try:
+        path = hooks.install(repo_path, hook_log_path())
+        print(f"хук post-commit установлен: {path} (грабли будут подхватываться сами)")
+    except OSError as exc:
+        print(f"хук не поставился: {exc}", file=sys.stderr)
 
 
 def cmd_projects(args: argparse.Namespace) -> int:
@@ -190,6 +204,7 @@ def cmd_projects(args: argparse.Namespace) -> int:
         cfgmod.save(cfg)
         print(f"{proj['id']}  {proj['name']}  →  {proj['repo_path']}")
         print(f"конфиг: {cfg['_path']}")
+        _install_hook_quiet(str(repo_path))
         return EXIT_OK
     if action == "rm":
         if not args.id:
@@ -417,6 +432,39 @@ def cmd_edit(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_hook(args: argparse.Namespace) -> int:
+    """Хук git: после коммита грабли подхватываются сами."""
+    repo, _ = load(args)
+    action = getattr(args, "hook_cmd", "status")
+    if action == "install":
+        log = hook_log_path()
+        try:
+            path = hooks.install(repo, log)
+        except hooks.HookError as exc:
+            return die(str(exc))
+        print(f"хук установлен: {path}")
+        print(f"лог: {log}")
+        print("теперь грабли из коммитов попадают в карточку сами")
+        return EXIT_OK
+    if action == "remove":
+        if hooks.remove(repo):
+            print("хук снят")
+        else:
+            print("хук не установлен (или он не наш — не трогаю)")
+        return EXIT_OK
+    print(f"хук {'установлен' if hooks.is_installed(repo) else 'не установлен'}: "
+          f"{hooks.hook_path(repo)}")
+    return EXIT_OK
+
+
+def hook_log_path() -> Path:
+    """Лог хука — рядом с логами доски, из конфига машины."""
+    base = cfgmod.get(get_config(), "paths.logs", "~/.local/state/fossilboard/logs")
+    path = Path(str(base)).expanduser() / "hook.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def cmd_sync(args: argparse.Namespace) -> int:
     """Разобрать историю репы и дописать грабли из флагов в карточки.
 
@@ -431,7 +479,12 @@ def cmd_sync(args: argparse.Namespace) -> int:
     if args.id:
         only = normalize_task_id(data, args.id)
         get_task(data, only)          # понятная ошибка, если карточки нет
-    items = gitlink.collect_gotchas(repo, data, registry, only=only)
+    if only:
+        # только коммиты этой карточки: вся история репы не нужна
+        items = [{"card_id": only, **f}
+                 for f in gitlink.flags_for_task(repo, only, registry)]
+    else:
+        items = gitlink.collect_gotchas(repo, data, registry)
     written = apply_gotchas(data, items)
     for item in written:
         print(f"{item['card_id']} ← #{item['flag']} {item['text']}  ({item['commit']})")
@@ -666,6 +719,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--session")
     s.add_argument("--parent")
     s.set_defaults(func=cmd_edit)
+
+    s = sub.add_parser("hook", help="хук git: грабли из коммитов подхватываются сами")
+    hsub = s.add_subparsers(dest="hook_cmd")
+    hsub.add_parser("install", help="поставить post-commit")
+    hsub.add_parser("remove", help="снять post-commit")
+    hsub.add_parser("status", help="есть ли хук")
+    s.set_defaults(func=cmd_hook, hook_cmd="status")
 
     s = sub.add_parser("sync", help="разобрать историю и дописать грабли из флагов")
     s.add_argument("id", nargs="?", help="только эта карточка (по умолчанию — все)")

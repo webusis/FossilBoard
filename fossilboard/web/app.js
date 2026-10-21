@@ -435,6 +435,22 @@ async function openDetail(id) {
   renderCommits(data);
   renderTimeline(data);
   render();
+  syncCardQuietly(id);
+}
+
+// тихая синхронизация: грабли из коммитов подхватываются сами, без кнопки.
+// Ошибки молча — карточку это не должно ломать.
+async function syncCardQuietly(id) {
+  try {
+    const data = await api(`/api/tasks/${encodeURIComponent(id)}/sync?project=${encodeURIComponent(state.current)}`,
+      { method: 'POST', body: JSON.stringify({}) });
+    if (!data.written || !data.written.length) return;
+    state.detail = data;
+    renderGotchas(data);
+    renderAttempts(data);
+    render();
+    toast(`граблей подхвачено: ${data.written.length}`);
+  } catch { /* тихо: не мешаем смотреть карточку */ }
 }
 
 function closeDetail() {

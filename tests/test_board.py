@@ -1820,5 +1820,84 @@ class TestSyncCommand(TempRepoCase):
         self.assertNotIn("Traceback", proc.stderr)
 
 
+class TestGitHook(TempRepoCase):
+    """FB-906: после коммита грабли подхватываются сами, а не по памяти."""
+
+    def run_cli(self, *args):
+        env = self.cli_env()
+        cmd = ["python3", str(REPO_ROOT / "board.py"), "--repo", str(self.repo), *args]
+        return subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(REPO_ROOT))
+
+    def commit(self, message: str):
+        env = dict(os.environ, GIT_AUTHOR_NAME="Тест", GIT_AUTHOR_EMAIL="t@example.com",
+                   GIT_COMMITTER_NAME="Тест", GIT_COMMITTER_EMAIL="t@example.com")
+        (self.repo / "file.txt").write_text(f"правка {message[:12]}")
+        git(self.repo, "add", "-A")
+        return subprocess.run(["git", "-C", str(self.repo), "commit", "-m", message],
+                              capture_output=True, text=True, env=env)
+
+    def test_hook_install_status_remove(self):
+        proc = self.run_cli("hook", "install")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        path = self.repo / ".git" / "hooks" / "post-commit"
+        self.assertTrue(path.is_file())
+        self.assertTrue(os.access(path, os.X_OK), "хук должен быть исполняемым")
+        self.assertIn("FossilBoard", path.read_text(encoding="utf-8"))
+        self.assertIn("установлен", self.run_cli("hook", "status").stdout)
+        self.assertEqual(self.run_cli("hook", "remove").returncode, 0)
+        self.assertFalse(path.exists())
+
+    def test_commit_with_flag_lands_in_card_without_manual_sync(self):
+        task = self.new_task("Задача")
+        self.save()
+        self.run_cli("hook", "install")
+        proc = self.commit(f"{task['id']} #rake Тк не thread-safe")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        fresh = find_task(load_board(self.repo), task["id"])
+        self.assertEqual(len(fresh.get("gotchas") or []), 1, "хук сам дописал граблю")
+        self.assertEqual(fresh["gotchas"][0]["flag"], "rake")
+        self.assertEqual(fresh["gotchas"][0]["text"], "Тк не thread-safe")
+
+    def test_hook_does_not_break_plain_commit(self):
+        task = self.new_task("Задача")
+        self.save()
+        self.run_cli("hook", "install")
+        proc = self.commit("обычный коммит без флагов")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        fresh = find_task(load_board(self.repo), task["id"])
+        self.assertEqual(fresh.get("gotchas"), None, "обычный коммит граблей не создаёт")
+
+    def test_hook_is_idempotent(self):
+        task = self.new_task("Задача")
+        self.save()
+        self.run_cli("hook", "install")
+        self.commit(f"{task['id']} #rake Тк не thread-safe")
+        self.commit(f"{task['id']} ещё одна правка")
+        fresh = find_task(load_board(self.repo), task["id"])
+        self.assertEqual(len(fresh.get("gotchas") or []), 1, "повторный запуск не дублирует")
+
+    def test_foreign_hook_is_not_overwritten(self):
+        path = self.repo / ".git" / "hooks" / "post-commit"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        original = "#!/bin/sh\necho мой собственный хук\n"
+        path.write_text(original, encoding="utf-8")
+        proc = self.run_cli("hook", "install")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("чужой хук", proc.stderr)
+        self.assertEqual(path.read_text(encoding="utf-8"), original, "чужой хук не тронут")
+        self.assertIn("не трогаю", self.run_cli("hook", "remove").stdout)
+
+    def test_flags_for_task_reads_only_that_card(self):
+        first = self.new_task("Первая")
+        second = self.new_task("Вторая")
+        self.save()
+        self.commit(f"{first['id']} #rake грабля первой")
+        self.commit(f"{second['id']} #gotcha грабля второй")
+        found = gitlink.flags_for_task(str(self.repo), first["id"])
+        self.assertEqual([f["text"] for f in found], ["грабля первой"])
+        found_second = gitlink.flags_for_task(str(self.repo), second["id"])
+        self.assertEqual([f["text"] for f in found_second], ["грабля второй"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -310,7 +310,8 @@ class Handler(BaseHTTPRequestHandler):
                 task_id = path[len("/api/tasks/"):-len("/sync")]
                 card = get_task(data, task_id)
                 registry = cfgmod.flags_registry(self.config())
-                items = gitlink.collect_gotchas(repo, data, registry, only=card["id"])
+                items = [{"card_id": card["id"], **f}
+                         for f in gitlink.flags_for_task(repo, card["id"], registry)]
                 written = apply_gotchas(data, items)
                 save_board(repo, data)
                 self._json({"written": written, **task_payload(repo, card["id"])}, 201)

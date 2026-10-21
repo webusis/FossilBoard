@@ -190,6 +190,15 @@ def card_ids_in(text: str, prefix: str) -> list[str]:
     return found
 
 
+def _flags_in_message(message: str, registry: dict) -> list[dict]:
+    """Флаги из сообщения коммита: заголовок — где угодно, тело — с начала строки."""
+    lines = message.splitlines()
+    found = parse_flags(lines[0], registry) if lines else []
+    for line in lines[1:]:
+        found += parse_flags(line, registry, anchored=True)
+    return found
+
+
 def commits_with_flags(repo_path: str, flags: dict | None = None,
                        limit: int = 500) -> list[dict]:
     """Коммиты репы, в сообщении которых есть флаги-грабли.
@@ -215,10 +224,7 @@ def commits_with_flags(repo_path: str, flags: dict | None = None,
             continue
         # заголовок — флаг где угодно; тело — только если строка начинается
         # с флага, иначе примеры в коде цеплялись бы как грабли
-        lines = message.splitlines()
-        found = parse_flags(lines[0], registry) if lines else []
-        for line in lines[1:]:
-            found += parse_flags(line, registry, anchored=True)
+        found = _flags_in_message(message, registry)
         if not found:
             continue
         commits.append({
@@ -255,4 +261,44 @@ def collect_gotchas(repo_path: str, data: dict, flags: dict | None = None,
             for flag in commit["flags"]:
                 out.append({"card_id": card, "flag": flag["flag"],
                             "text": flag["text"], "commit": commit["short"]})
+    return out
+
+
+def commit_messages(repo_path: str, hashes: list[str]) -> dict[str, str]:
+    """Полные сообщения коммитов по хэшам — одним вызовом git."""
+    if not hashes:
+        return {}
+    out = _git(repo_path, "log", "--no-walk", f"--pretty=format:{_LOG_FORMAT_FULL}", *hashes)
+    result: dict[str, str] = {}
+    for record in out.split("\x1e"):
+        record = record.strip("\n")
+        if not record.strip():
+            continue
+        parts = record.split("\x1f", 4)
+        if len(parts) != 5:
+            continue
+        result[parts[0]] = parts[4]
+    return result
+
+
+def flags_for_task(repo_path: str, task_id: str, flags: dict | None = None,
+                   limit: int = 50) -> list[dict]:
+    """Флаги из коммитов ОДНОЙ карточки: [{flag, text, commit}].
+
+    Разбираются только её коммиты — не вся история репы. Иначе каждый клик
+    по карточке жег бы git log по всей репе.
+    """
+    registry = DEFAULT_FLAGS if flags is None else flags
+    if not registry:
+        return []
+    commits = commits_for_task(repo_path, task_id, limit=limit)
+    if not commits:
+        return []
+    messages = commit_messages(repo_path, [c["hash"] for c in commits])
+    out: list[dict] = []
+    for commit in commits:
+        message = messages.get(commit["hash"], commit["subject"])
+        for flag in _flags_in_message(message, registry):
+            out.append({"flag": flag["flag"], "text": flag["text"],
+                        "commit": commit["short"]})
     return out
