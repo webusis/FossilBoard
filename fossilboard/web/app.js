@@ -616,6 +616,35 @@ $('#d-addsub').addEventListener('click', async () => {
   } catch (err) { toast(err.message, true); }
 });
 
+$('#d-fail').addEventListener('click', async () => {
+  const t = state.detail.task;
+  const text = await promptFor('Что не получилось? (карточка останется на месте)');
+  if (!text) return;
+  const why = await promptFor('Почему не вышло? (можно пропустить)');
+  try {
+    await api(`/api/tasks/${encodeURIComponent(t.id)}/fail?project=${encodeURIComponent(state.current)}`, {
+      method: 'POST',
+      body: JSON.stringify({ text, why: why || '' }),
+    });
+    await loadBoard();
+    await openDetail(t.id);
+    toast(`${t.id}: неудачный путь записан`);
+  } catch (err) { toast(err.message, true); }
+});
+
+$('#d-sync').addEventListener('click', async () => {
+  const t = state.detail.task;
+  try {
+    const data = await api(`/api/tasks/${encodeURIComponent(t.id)}/sync?project=${encodeURIComponent(state.current)}`,
+      { method: 'POST', body: JSON.stringify({}) });
+    await loadBoard();
+    await openDetail(t.id);
+    toast(data.written.length
+      ? `граблей добавлено: ${data.written.length}`
+      : 'новых граблей нет — всё уже записано');
+  } catch (err) { toast(err.message, true); }
+});
+
 $('#d-close').addEventListener('click', closeDetail);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {

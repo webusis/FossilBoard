@@ -12,10 +12,11 @@ from . import __version__
 from . import config as cfgmod
 from . import gitlink
 from .storage import (
-    BoardError, add_attempt, add_gotcha, add_module, add_task, attach_file, board_dir,
-    board_path, column_name, delete_attachment, delete_module, delete_task, find_module,
-    find_task, attempts_of, gotchas_of, init_board, load_board, move_task, resolve_column,
-    save_board, subtasks, update_module, update_task, wip_state,
+    BoardError, add_attempt, add_event, add_gotcha_once, add_module, add_task,
+    apply_gotchas, attach_file, board_dir, board_path, column_name, delete_attachment,
+    delete_module, delete_task, find_module, find_task, attempts_of, get_task, gotchas_of,
+    init_board, load_board, move_task, normalize_task_id, resolve_column, save_board,
+    subtasks, task_prefix, update_module, update_task, wip_state,
 )
 
 EXIT_OK = 0
@@ -312,8 +313,13 @@ def cmd_list(args: argparse.Namespace) -> int:
         mark = "◼" if kids else " "
         est = f"  ~{task['estimate']}ч" if task.get("estimate") else ""
         ses = f"  [{task['session_label']}]" if task.get("session_label") else ""
+        # застрявшая задача должна быть видна сразу: сколько граблей и
+        # сколько неудачных путей
+        gotchas = len(gotchas_of(task))
+        fails = len(attempts_of(task))
+        marks = (f"  ⚠{gotchas}" if gotchas else "") + (f"  ✗{fails}" if fails else "")
         print(f"{mark} {task['id']:<10} {column_name(data, task['column_id']):<12} "
-              f"{task['title']}{est}{ses}")
+              f"{task['title']}{est}{ses}{marks}")
         if args.verbose:
             for line in fmt_task(task, data, indent=2)[1:]:
                 print(line)
@@ -408,6 +414,53 @@ def cmd_edit(args: argparse.Namespace) -> int:
     task = update_task(data, args.id, changes)
     save_board(repo, data)
     print(task["id"] + " обновлена")
+    return EXIT_OK
+
+
+def cmd_sync(args: argparse.Namespace) -> int:
+    """Разобрать историю репы и дописать грабли из флагов в карточки.
+
+        git commit -m "FB-12 #rake Тк не thread-safe"
+
+    Флаг без привязки к карточке не принимается. Повторный запуск ничего
+    не портит: грабля с тем же флагом и тем же текстом уже есть — не пишем.
+    """
+    repo, data = load(args)
+    registry = cfgmod.flags_registry(get_config())
+    only = None
+    if args.id:
+        only = normalize_task_id(data, args.id)
+        get_task(data, only)          # понятная ошибка, если карточки нет
+    items = gitlink.collect_gotchas(repo, data, registry, only=only)
+    written = apply_gotchas(data, items)
+    for item in written:
+        print(f"{item['card_id']} ← #{item['flag']} {item['text']}  ({item['commit']})")
+    if not args.dry_run:
+        save_board(repo, data)
+    print(f"граблей добавлено: {len(written)}")
+    return EXIT_OK
+
+
+def cmd_fail(args: argparse.Namespace) -> int:
+    """Записать неудачную попытку в карточку.
+
+    Это запись, а не «закрыть с ошибкой»: колонка, оценка и модуль не
+    трогаются. Знать, куда НЕ походили, часто ценнее знать финальный маршрут.
+    """
+    repo, data = load(args)
+    task = find_task(data, args.id)
+    if task is None:
+        return die(f"задача {args.id} не найдена")
+    text = (args.text or "").strip()
+    if not text:
+        return die("пусто — нечего записывать")
+    attempt = add_attempt(task, text, why=args.why or "", tried=args.tried or "",
+                          tags=args.tag or [])
+    add_event(task, "failed", text)
+    save_board(repo, data)
+    print(f"{task['id']} ✗ {attempt['text']}")
+    if attempt["why"]:
+        print(f"   почему: {attempt['why']}")
     return EXIT_OK
 
 
@@ -613,6 +666,19 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--session")
     s.add_argument("--parent")
     s.set_defaults(func=cmd_edit)
+
+    s = sub.add_parser("sync", help="разобрать историю и дописать грабли из флагов")
+    s.add_argument("id", nargs="?", help="только эта карточка (по умолчанию — все)")
+    s.add_argument("--dry-run", action="store_true", help="показать и не писать")
+    s.set_defaults(func=cmd_sync)
+
+    s = sub.add_parser("fail", help="записать неудачную попытку в карточку")
+    s.add_argument("id")
+    s.add_argument("text", help="что пробовали")
+    s.add_argument("--why", help="почему не получилось")
+    s.add_argument("--tried", help="чем именно пробовали")
+    s.add_argument("--tag", action="append", help="метка (можно повторять)")
+    s.set_defaults(func=cmd_fail)
 
     s = sub.add_parser("rm", help="удалить карточку")
     s.add_argument("id")

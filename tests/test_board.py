@@ -1031,8 +1031,8 @@ class TestConfigLookup(TempRepoCase):
         self.assertEqual(merged["server"]["port"], 8770)
         # и в записанный конфиг подчёркнутые ключи тоже не попадают
         saved = {k: v for k, v in merged.items() if not k.startswith("_")}
-        self.assertEqual(sorted(saved), ["attachments", "default_project", "git", "paths",
-                                        "projects", "server", "ui", "version"])
+        self.assertEqual(sorted(saved), ["attachments", "default_project", "flags", "git",
+                                        "paths", "projects", "server", "ui", "version"])
         self.assertTrue([k for k in data if k.startswith("_")],
                         "в шаблоне есть комментарии")
         for key in data:
@@ -1368,6 +1368,28 @@ class TestRepoApi(TempRepoCase):
         self.assertTrue(data["has_board"])
         self.assertTrue(data["is_git"])
 
+    def test_fail_endpoint_records_attempt_without_moving_card(self):
+        task = add_task(self.data, "Задача")
+        move_task(self.data, task["id"], "wip")
+        save_board(self.repo, self.data)
+        status, data = self.post(
+            self.base + f"/api/tasks/{task['id']}/fail",
+            {"text": "пробовала X", "why": "не взлетело", "tags": ["tk"]})
+        self.assertEqual(status, 201)
+        self.assertEqual(data["attempt"]["text"], "пробовала X")
+        self.assertEqual(data["task"]["column_id"], "wip", "карточка осталась на месте")
+        self.assertEqual(len(data["task"]["attempts"]), 1)
+        _, board = self.get(self.base + "/api/board")
+        card = [t for t in board["tasks"] if t["id"] == task["id"]][0]
+        self.assertEqual(len(card["attempts"]), 1, "запись видна и в списке доски")
+
+    def test_fail_endpoint_rejects_empty_text(self):
+        task = add_task(self.data, "Задача")
+        save_board(self.repo, self.data)
+        status, data = self.post(self.base + f"/api/tasks/{task['id']}/fail", {"text": "  "})
+        self.assertEqual(status, 400)
+        self.assertIn("error", data)
+
 
 class TestWebMarkup(TempRepoCase):
     """Статика отдаётся как есть: проверяем, что в разметке нет ловушек."""
@@ -1590,6 +1612,212 @@ class TestGotchasAndAttempts(TempRepoCase):
         self.assertIn("#rake Tk не thread-safe", proc.stdout)
         self.assertIn("неудачные пути (1)", proc.stdout)
         self.assertIn("пробовала libtk8.6", proc.stdout)
+
+
+class TestFailCommand(TempRepoCase):
+    """FB-904: команда fail — бортовой журнал неудачных путей.
+
+    Знать, куда НЕ походили, часто ценнее знать финальный маршрут.
+    """
+
+    def run_cli(self, *args):
+        env = self.cli_env()
+        cmd = ["python3", str(REPO_ROOT / "board.py"), "--repo", str(self.repo), *args]
+        return subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(REPO_ROOT))
+
+    def test_fail_writes_attempt_and_keeps_column(self):
+        task = self.new_task("Задача")
+        move_task(self.data, task["id"], "wip")
+        self.save()
+        proc = self.run_cli("fail", task["id"], "Пробовала libtk8.6 с Xft",
+                            "--why", "линкуется на libtcl8.6", "--tried", "apt-get download",
+                            "--tag", "tk")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        fresh = find_task(load_board(self.repo), task["id"])
+        self.assertEqual(fresh["column_id"], "wip", "fail не двигает карточку")
+        self.assertEqual(len(fresh["attempts"]), 1)
+        attempt = fresh["attempts"][0]
+        self.assertEqual(attempt["text"], "Пробовала libtk8.6 с Xft")
+        self.assertEqual(attempt["why"], "линкуется на libtcl8.6")
+        self.assertEqual(attempt["tried"], "apt-get download")
+        self.assertEqual(attempt["tags"], ["tk"])
+        self.assertIn("failed", [e["kind"] for e in fresh["events"]],
+                      "запись попадает в ленту событий")
+
+    def test_fail_on_unknown_task_is_clear_error(self):
+        proc = self.run_cli("fail", "K2C-999", "что-то")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("не найдена", proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr)
+
+    def test_fail_counter_visible_in_list(self):
+        task = self.new_task("Задача")
+        self.save()
+        self.run_cli("fail", task["id"], "не взлетело")
+        listing = self.run_cli("list").stdout
+        self.assertIn("✗1", listing, "счётчик неудачных путей виден в списке")
+
+    def test_fail_visible_in_show(self):
+        task = self.new_task("Задача")
+        self.save()
+        self.run_cli("fail", task["id"], "не взлетело", "--why", "потому что")
+        out = self.run_cli("show", task["id"]).stdout
+        self.assertIn("неудачные пути (1)", out)
+        self.assertIn("не взлетело", out)
+        self.assertIn("потому что", out)
+
+
+class TestFlagParsing(TempRepoCase):
+    """FB-903: разбор флагов-граблей из сообщений коммитов."""
+
+    def test_parse_flags_basic(self):
+        self.assertEqual(gitlink.parse_flags("FB-12 #rake Тк не thread-safe"),
+                         [{"flag": "rake", "text": "Тк не thread-safe"}])
+
+    def test_parse_flags_several_in_one_commit(self):
+        self.assertEqual(gitlink.parse_flags("FB-12 #rake A #gotcha B"),
+                         [{"flag": "rake", "text": "A"}, {"flag": "gotcha", "text": "B"}])
+
+    def test_parse_flags_ignores_unknown_hashtags(self):
+        self.assertEqual(gitlink.parse_flags("FB-12 #неизвестный текст"), [])
+
+    def test_parse_flags_stops_at_next_hashtag(self):
+        self.assertEqual(gitlink.parse_flags("#rake грабля #FB-12 хвост"),
+                         [{"flag": "rake", "text": "грабля"}])
+
+    def test_parse_flags_keeps_text_after_flag_only(self):
+        self.assertEqual(gitlink.parse_flags("feat: FB-12 #gotcha сокеты из /tmp подчищают"),
+                         [{"flag": "gotcha", "text": "сокеты из /tmp подчищают"}])
+
+    def test_parse_flags_ignores_flag_list(self):
+        # перечисление флагов — не грабля: после флага нет разделителя
+        self.assertEqual(gitlink.parse_flags("читает флаги #rake/#gotcha/#fix/#todo тут"), [])
+
+    def test_parse_flags_keeps_one_line_only(self):
+        found = gitlink.parse_flags("FB-12 #rake грабля\nвторая строка тела")
+        self.assertEqual(found, [{"flag": "rake", "text": "грабля"}])
+
+    def test_parse_flags_anchored_needs_flag_at_line_start(self):
+        self.assertEqual(gitlink.parse_flags('пример: git commit -m "FB-12 #rake текст"',
+                                             anchored=True), [])
+        self.assertEqual(gitlink.parse_flags("#rake грабля отдельной строкой", anchored=True),
+                         [{"flag": "rake", "text": "грабля отдельной строкой"}])
+
+    def test_card_ids_in(self):
+        self.assertEqual(gitlink.card_ids_in("FB-12 и FB-3", "FB"), ["FB-12", "FB-3"])
+        self.assertEqual(gitlink.card_ids_in("FB-130", "FB"), ["FB-130"])
+        self.assertEqual(gitlink.card_ids_in("ничего тут нет", "FB"), [])
+
+    def test_flags_registry_extended_by_config(self):
+        registry = config_mod.flags_registry({"flags": {"мой-флаг": "что это значит"}})
+        self.assertIn("мой-флаг", registry)
+        self.assertIn("rake", registry, "умолчания остаются")
+        self.assertIn("gotcha", registry)
+
+    def test_flags_registry_without_config_keeps_defaults(self):
+        registry = config_mod.flags_registry({})
+        self.assertEqual(sorted(registry), ["fix", "gotcha", "rake", "todo"])
+
+
+class TestSyncCommand(TempRepoCase):
+    """FB-903: коммит с флагом сам попадает в карточку, повторно — без дублей."""
+
+    def run_cli(self, *args):
+        env = self.cli_env()
+        cmd = ["python3", str(REPO_ROOT / "board.py"), "--repo", str(self.repo), *args]
+        return subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(REPO_ROOT))
+
+    def commit(self, message: str) -> None:
+        self._commits = getattr(self, "_commits", 0) + 1
+        (self.repo / "file.txt").write_text(f"правка {self._commits}")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-m", message)
+
+    def test_commit_flag_lands_in_card(self):
+        task = self.new_task("Задача")
+        self.save()
+        self.commit(f"{task['id']} #rake Тк не thread-safe")
+        proc = self.run_cli("sync")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        fresh = find_task(load_board(self.repo), task["id"])
+        self.assertEqual(len(fresh["gotchas"]), 1)
+        gotcha = fresh["gotchas"][0]
+        self.assertEqual(gotcha["flag"], "rake")
+        self.assertEqual(gotcha["text"], "Тк не thread-safe")
+        self.assertEqual(gotcha["source"], "commit")
+        self.assertTrue(gotcha["commit"], "коммит зафиксирован")
+
+    def test_sync_twice_adds_no_duplicates(self):
+        task = self.new_task("Задача")
+        self.save()
+        self.commit(f"{task['id']} #rake Тк не thread-safe")
+        self.run_cli("sync")
+        second = self.run_cli("sync")
+        self.assertIn("граблей добавлено: 0", second.stdout)
+        fresh = find_task(load_board(self.repo), task["id"])
+        self.assertEqual(len(fresh["gotchas"]), 1, "повторный разбор не плодит дубли")
+
+    def test_flag_without_card_is_ignored(self):
+        self.new_task("Задача")
+        self.save()
+        self.commit("#rake грабля без карточки")
+        proc = self.run_cli("sync")
+        self.assertIn("граблей добавлено: 0", proc.stdout)
+        fresh = load_board(self.repo)["tasks"][0]
+        self.assertEqual(fresh.get("gotchas"), None, "без карточки флаг не принимается")
+
+    def test_other_card_is_not_touched(self):
+        first = self.new_task("Первая")
+        second = self.new_task("Вторая")
+        self.save()
+        self.commit(f"{second['id']} #rake грабля второй карточки")
+        self.run_cli("sync", first["id"])
+        board = load_board(self.repo)
+        self.assertEqual(board["tasks"][0].get("gotchas"), None, "чужая карточка не цепляется")
+        self.run_cli("sync")
+        board = load_board(self.repo)
+        by_id = {t["id"]: t for t in board["tasks"]}
+        self.assertEqual(len(by_id[second["id"]]["gotchas"]), 1)
+        self.assertEqual(by_id[first["id"]].get("gotchas"), None)
+
+    def test_old_commits_without_flags_change_nothing(self):
+        task = self.new_task("Задача")
+        self.save()
+        self.commit("обычный коммит без флагов")
+        self.commit("fix: какая-то правка")
+        proc = self.run_cli("sync")
+        self.assertIn("граблей добавлено: 0", proc.stdout)
+        fresh = find_task(load_board(self.repo), task["id"])
+        self.assertEqual(fresh.get("gotchas"), None)
+        self.assertEqual(fresh["title"], "Задача", "карточка не пострадала")
+
+    def test_example_in_body_does_not_pull_other_card(self):
+        first = self.new_task("Первая")
+        second = self.new_task("Вторая")
+        self.save()
+        self.commit(f"{first['id']} #rake грабля\n\n"
+                    f'пример: git commit -m "{second["id"]} #rake чужая грабля"')
+        self.run_cli("sync")
+        board = load_board(self.repo)
+        by_id = {t["id"]: t for t in board["tasks"]}
+        self.assertEqual(len(by_id[first["id"]]["gotchas"]), 1)
+        self.assertEqual(by_id[second["id"]].get("gotchas"), None,
+                         "пример в теле не тянет чужую карточку")
+
+    def test_gotcha_in_body_line_lands_in_card_from_subject(self):
+        task = self.new_task("Задача")
+        self.save()
+        self.commit(f"feat: {task['id']}\n\n#rake грабля отдельной строкой")
+        self.run_cli("sync")
+        fresh = find_task(load_board(self.repo), task["id"])
+        self.assertEqual(len(fresh["gotchas"]), 1)
+        self.assertEqual(fresh["gotchas"][0]["text"], "грабля отдельной строкой")
+
+    def test_sync_unknown_card_is_clear_error(self):
+        proc = self.run_cli("sync", "K2C-999")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("не найдена", proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr)
 
 
 if __name__ == "__main__":

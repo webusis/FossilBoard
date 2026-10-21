@@ -56,6 +56,12 @@ DEFAULTS = {
         "logs": "~/.local/state/fossilboard/logs",
     },
     "default_project": None,   # id проекта без --project: board.py config set default_project FB
+    "flags": {                  # флаги-грабли в сообщениях коммитов (FB-903)
+        "rake": "грабля или урок: что не сработало и почему",
+        "gotcha": "неочевидное поведение, о котором стоит знать",
+        "fix": "как починили",
+        "todo": "долг, который остался",
+    },
     "projects": [],
 }
 
@@ -204,6 +210,22 @@ def effective_server(cfg: dict, host: str | None = None, port: int | None = None
     final_host = host or env_host or get(cfg, "server.host", "0.0.0.0")
     final_port = port or (int(env_port) if env_port else get(cfg, "server.port", 8770))
     return final_host, int(final_port)
+
+
+def flags_registry(cfg: dict | None) -> dict:
+    """Реестр флагов-граблей: умолчания + то, что добавил пользователь.
+
+    Расширяется конфигом машины без правки кода:
+        "flags": {"мой-флаг": "что это значит"}
+    """
+    base = dict(DEFAULTS.get("flags", {}))
+    extra = (cfg or {}).get("flags") or {}
+    if isinstance(extra, dict):
+        for name, desc in extra.items():
+            key = str(name).strip().lstrip("#")
+            if key:
+                base[key] = desc or ""
+    return base
 
 
 def project(cfg: dict, ref: str | None) -> dict | None:

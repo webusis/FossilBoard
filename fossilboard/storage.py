@@ -304,6 +304,51 @@ def add_gotcha(task: dict, text: str, *, flag: str | None = None,
     return item
 
 
+def has_gotcha(task: dict, text: str, flag: str | None = None) -> bool:
+    """Есть ли уже такая грабля. Ключ — пара (флаг, текст).
+
+    Разбор истории можно гонять сколько угодно: повторный запуск не должен
+    плодить дубли (FB-903).
+    """
+    needle = (text or "").strip()
+    want_flag = (flag or "").strip().lstrip("#").lower()
+    for item in gotchas_of(task):
+        if (item.get("text") or "").strip() != needle:
+            continue
+        if (item.get("flag") or "").lower() == want_flag:
+            return True
+    return False
+
+
+def add_gotcha_once(task: dict, text: str, *, flag: str | None = None,
+                    source: str = "manual", commit: str | None = None) -> dict | None:
+    """Записать граблю, если такой ещё нет. None — такая уже была."""
+    if has_gotcha(task, text, flag):
+        return None
+    return add_gotcha(task, text, flag=flag, source=source, commit=commit)
+
+
+def apply_gotchas(data: dict, items: list[dict]) -> list[dict]:
+    """Записать собранные грабли в карточки. Возвращает то, что записано.
+
+    Идемпотентно: грабля с тем же флагом и тем же текстом уже есть — не
+    пишем второй раз. Карточки, которой нет, молча пропускаем: коммит мог
+    остаться в репе после удаления карточки.
+    """
+    written = []
+    for item in items:
+        task = find_task(data, item.get("card_id", ""))
+        if task is None:
+            continue
+        gotcha = add_gotcha_once(task, item.get("text", ""), flag=item.get("flag"),
+                                 source=item.get("source", "commit"),
+                                 commit=item.get("commit"))
+        if gotcha is not None:
+            written.append({"card_id": task["id"], "flag": gotcha.get("flag"),
+                            "text": gotcha["text"], "commit": gotcha.get("commit")})
+    return written
+
+
 def add_attempt(task: dict, text: str, *, why: str = "", tried: str = "",
                 tags: list[str] | None = None) -> dict:
     """Записать неудачную попытку. Статус карточки при этом не меняется."""

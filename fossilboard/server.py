@@ -18,10 +18,10 @@ from . import config as cfgmod
 from . import gitlink
 from . import repos as repolib
 from .storage import (
-    BoardError, add_module, add_task, attachment_dir, attach_file, delete_attachment,
-    delete_module, delete_task, find_module, find_task, guess_content_type, load_board,
-    move_task, resolve_column, save_board, subtasks, task_sort_key,
-    update_module, update_task, wip_state,
+    BoardError, add_attempt, add_module, add_task, apply_gotchas, attachment_dir,
+    attach_file, delete_attachment, delete_module, delete_task, find_module, find_task,
+    get_task, guess_content_type, load_board, move_task, resolve_column, save_board,
+    subtasks, task_sort_key, update_module, update_task, wip_state,
 )
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -304,6 +304,28 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 save_board(repo, data)
                 self._json(task_payload(repo, task["id"]), 201)
+                return
+            if path.startswith("/api/tasks/") and path.endswith("/sync"):
+                # разбор истории: грабли из флагов в сообщениях коммитов
+                task_id = path[len("/api/tasks/"):-len("/sync")]
+                card = get_task(data, task_id)
+                registry = cfgmod.flags_registry(self.config())
+                items = gitlink.collect_gotchas(repo, data, registry, only=card["id"])
+                written = apply_gotchas(data, items)
+                save_board(repo, data)
+                self._json({"written": written, **task_payload(repo, card["id"])}, 201)
+                return
+            if path.startswith("/api/tasks/") and path.endswith("/fail"):
+                # запись неудачной попытки: колонку карточки не трогаем
+                task_id = path[len("/api/tasks/"):-len("/fail")]
+                body = self._read_json()
+                attempt = add_attempt(
+                    get_task(data, task_id), body.get("text", ""),
+                    why=body.get("why", ""), tried=body.get("tried", ""),
+                    tags=body.get("tags") or [],
+                )
+                save_board(repo, data)
+                self._json({"attempt": attempt, **task_payload(repo, task_id)}, 201)
                 return
             if path.startswith("/api/tasks/") and path.endswith("/move"):
                 task_id = path[len("/api/tasks/"):-len("/move")]
