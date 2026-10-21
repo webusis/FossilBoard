@@ -1502,5 +1502,95 @@ class TestEditDescription(TempRepoCase):
         self.assertEqual(load_board(self.repo)["tasks"][0]["description"], "не трогать")
 
 
+class TestGotchasAndAttempts(TempRepoCase):
+    """FB-905: у карточки свои поля под грабли и неудачные пути.
+
+    Описание карточки пишут руками, автоматика пишет в поля — иначе
+    человек и машина правят один хвост и теряют правки.
+    """
+
+    def run_cli(self, *args):
+        env = self.cli_env()
+        cmd = ["python3", str(REPO_ROOT / "board.py"), "--repo", str(self.repo), *args]
+        return subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(REPO_ROOT))
+
+    def test_gotcha_lives_in_its_own_field(self):
+        task = self.new_task("Задача", description="текст человека")
+        storage.add_gotcha(task, "Tk не thread-safe", flag="#rake", source="commit")
+        self.save()
+        fresh = find_task(load_board(self.repo), task["id"])
+        self.assertEqual(fresh["description"], "текст человека", "описание человек не трогаем")
+        self.assertEqual(len(fresh["gotchas"]), 1)
+        gotcha = fresh["gotchas"][0]
+        self.assertEqual(gotcha["text"], "Tk не thread-safe")
+        self.assertEqual(gotcha["flag"], "rake", "решётка убирается, метка остаётся")
+        self.assertEqual(gotcha["source"], "commit")
+
+    def test_empty_gotcha_is_rejected(self):
+        task = self.new_task("X")
+        with self.assertRaises(BoardError):
+            storage.add_gotcha(task, "   ")
+
+    def test_gotcha_limit_keeps_card_readable(self):
+        task = self.new_task("X")
+        for i in range(storage.MAX_GOTCHAS):
+            storage.add_gotcha(task, f"грабля {i}")
+        with self.assertRaises(BoardError):
+            storage.add_gotcha(task, "ещё одна")
+
+    def test_attempt_keeps_status_and_description(self):
+        task = self.new_task("X", description="описание")
+        move_task(self.data, task["id"], "wip")
+        storage.add_attempt(task, "пробовала X", why="не взлетело",
+                            tried="libtk8.6", tags=["tk", " tk "])
+        self.save()
+        fresh = find_task(load_board(self.repo), task["id"])
+        self.assertEqual(fresh["column_id"], "wip", "неудачный путь не закрывает карточку")
+        self.assertEqual(fresh["description"], "описание")
+        attempt = fresh["attempts"][0]
+        self.assertEqual(attempt["why"], "не взлетело")
+        self.assertEqual(attempt["tried"], "libtk8.6")
+        self.assertEqual(attempt["tags"], ["tk"], "пустые метки выбрасываются")
+
+    def test_old_task_without_fields_loads(self):
+        task = self.new_task("Старая")
+        self.save()
+        path = storage.board_path(self.repo)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["tasks"][0].pop("gotchas", None)
+        data["tasks"][0].pop("attempts", None)
+        data["schema_version"] = 1
+        storage.atomic_write_json(path, data)
+        fresh = load_board(self.repo)
+        self.assertEqual(storage.gotchas_of(fresh["tasks"][0]), [])
+        self.assertEqual(storage.attempts_of(fresh["tasks"][0]), [])
+
+    def test_new_schema_version_is_written(self):
+        self.save()
+        self.assertEqual(load_board(self.repo)["schema_version"], 2)
+
+    def test_newer_schema_version_gives_clear_error(self):
+        self.save()
+        path = storage.board_path(self.repo)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["schema_version"] = 99
+        storage.atomic_write_json(path, data)
+        with self.assertRaises(BoardError) as ctx:
+            load_board(self.repo)
+        self.assertIn("99", str(ctx.exception))
+
+    def test_cli_show_prints_both_blocks(self):
+        task = self.new_task("Задача", description="описание")
+        storage.add_gotcha(task, "Tk не thread-safe", flag="rake")
+        storage.add_attempt(task, "пробовала libtk8.6", why="не взлетело")
+        self.save()
+        proc = self.run_cli("show", task["id"])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("грабли (1)", proc.stdout)
+        self.assertIn("#rake Tk не thread-safe", proc.stdout)
+        self.assertIn("неудачные пути (1)", proc.stdout)
+        self.assertIn("пробовала libtk8.6", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

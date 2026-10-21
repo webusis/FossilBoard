@@ -138,6 +138,12 @@ def load_board(repo_path: str | Path) -> dict:
         raise BoardError(
             f"{path} — это не доска (нет поля 'tasks'). Восстановить:\n  {recover_hint(repo_path)}"
         )
+    version = data.get("schema_version")
+    if isinstance(version, int) and version > SCHEMA_VERSION:
+        raise BoardError(
+            f"{path} — схема версии {version}, а инструмент знает только {SCHEMA_VERSION}.\n"
+            "Обнови FossilBoard: записать доску в старом формате — значит потерять поля."
+        )
     data.setdefault("schema_version", SCHEMA_VERSION)
     data.setdefault("counters", {}).setdefault("task", 0)
     return data
@@ -248,6 +254,82 @@ def wip_state(data: dict) -> dict[str, dict]:
 
 def add_event(task: dict, kind: str, payload: str = "") -> None:
     task.setdefault("events", []).append({"at": now_iso(), "kind": kind, "payload": payload})
+
+
+# --------------------------------------------------------------------------
+# грабли и неудачные пути (FB-905)
+# --------------------------------------------------------------------------
+# Описание карточки пишут руками, сюда пишет автоматика и журнал неудач.
+# Отдельные поля — иначе человек и машина правят один хвост и теряют правки.
+
+MAX_GOTCHAS = 50
+MAX_ATTEMPTS = 50
+
+
+def gotchas_of(task: dict) -> list[dict]:
+    """Грабли карточки. Старые карточки поля не имеют — это не ошибка."""
+    return task.get("gotchas") or []
+
+
+def attempts_of(task: dict) -> list[dict]:
+    """Неудачные пути карточки: что пробовали и почему не вышло."""
+    return task.get("attempts") or []
+
+
+def add_gotcha(task: dict, text: str, *, flag: str | None = None,
+               source: str = "manual", commit: str | None = None) -> dict:
+    """Записать граблю в своё поле карточки.
+
+    source: manual | commit | import — откуда запись пришла.
+    flag:   метка из реестра (#rake, #gotcha, #fix, #todo) — может быть пустым.
+    """
+    text = (text or "").strip()
+    if not text:
+        raise BoardError("пустая грабля — нечего записывать")
+    items = task.setdefault("gotchas", [])
+    if len(items) >= MAX_GOTCHAS:
+        raise BoardError(
+            f"в карточке уже {MAX_GOTCHAS} граблей — карточка превращается в свалку"
+        )
+    item = {
+        "text": text,
+        "flag": (flag or "").strip().lstrip("#") or None,
+        "source": source or "manual",
+        "at": now_iso(),
+    }
+    if commit:
+        item["commit"] = commit
+    items.append(item)
+    task["updated_at"] = now_iso()
+    return item
+
+
+def add_attempt(task: dict, text: str, *, why: str = "", tried: str = "",
+                tags: list[str] | None = None) -> dict:
+    """Записать неудачную попытку. Статус карточки при этом не меняется."""
+    text = (text or "").strip()
+    if not text:
+        raise BoardError("пустая запись — нечего записывать")
+    items = task.setdefault("attempts", [])
+    if len(items) >= MAX_ATTEMPTS:
+        raise BoardError(
+            f"в карточке уже {MAX_ATTEMPTS} неудачных путей — карточка превращается в свалку"
+        )
+    clean: list[str] = []
+    for tag in (tags or []):
+        name = tag.strip()
+        if name and name not in clean:
+            clean.append(name)
+    item = {
+        "text": text,
+        "why": (why or "").strip(),
+        "tried": (tried or "").strip(),
+        "tags": clean,
+        "at": now_iso(),
+    }
+    items.append(item)
+    task["updated_at"] = now_iso()
+    return item
 
 
 def task_prefix(data: dict) -> str:

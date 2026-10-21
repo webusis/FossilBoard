@@ -12,10 +12,10 @@ from . import __version__
 from . import config as cfgmod
 from . import gitlink
 from .storage import (
-    BoardError, add_module, add_task, attach_file, board_dir, board_path, column_name,
-    delete_attachment, delete_module, delete_task, find_module, find_task, init_board,
-    load_board, move_task, resolve_column, save_board, subtasks,
-    update_module, update_task, wip_state,
+    BoardError, add_attempt, add_gotcha, add_module, add_task, attach_file, board_dir,
+    board_path, column_name, delete_attachment, delete_module, delete_task, find_module,
+    find_task, attempts_of, gotchas_of, init_board, load_board, move_task, resolve_column,
+    save_board, subtasks, update_module, update_task, wip_state,
 )
 
 EXIT_OK = 0
@@ -114,6 +114,20 @@ def fmt_task(task: dict, data: dict, *, indent: int = 0) -> list[str]:
     if task.get("description"):
         for raw in task["description"].splitlines():
             lines.append(pad + "  | " + raw)
+    gotchas = gotchas_of(task)
+    if gotchas:
+        lines.append(pad + f"  грабли ({len(gotchas)}):")
+        for g in gotchas:
+            flag = f"#{g['flag']} " if g.get("flag") else ""
+            src = f"  [{g.get('source', 'manual')}]" if g.get("source") else ""
+            lines.append(pad + f"    {flag}{g['text']}{src}")
+    attempts = attempts_of(task)
+    if attempts:
+        lines.append(pad + f"  неудачные пути ({len(attempts)}):")
+        for a in attempts:
+            why = f" — {a['why']}" if a.get("why") else ""
+            tags = ("  " + ", ".join(f"#{t}" for t in a.get("tags", []))) if a.get("tags") else ""
+            lines.append(pad + f"    {a['text']}{why}{tags}")
     if task.get("events"):
         lines.append(pad + "  события:")
         for ev in task["events"][-5:]:

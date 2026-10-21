@@ -292,11 +292,15 @@ function renderCard(task, b, collapsed) {
   const prog = subtaskProgress(task.id);
   const isCollapsed = collapsed.has(task.id);
   const att = (task.attachments || []).length;
+  const gotchas = (task.gotchas || []).length;
+  const attempts = (task.attempts || []).length;
   const chips = [];
   if (mod) chips.push(`<span class="chip"><i class="dot" style="background:${esc(mod.color)}"></i>${esc(mod.name)}</span>`);
   if (task.estimate) chips.push(`<span class="chip">~${esc(task.estimate)} ч</span>`);
   if (task.session_label) chips.push(`<span class="chip">${esc(task.session_label)}</span>`);
   if (att) chips.push(`<span class="chip">📎 ${att}</span>`);
+  if (gotchas) chips.push(`<span class="chip warn" title="грабли">${icon('rake', 11)} ${gotchas}</span>`);
+  if (attempts) chips.push(`<span class="chip dead" title="неудачные пути">${icon('dead', 11)} ${attempts}</span>`);
   if (task.parent_id) chips.push(`<span class="chip">${icon('child', 11)} ${esc(task.parent_id)}</span>`);
 
   const allKids = (b.tasks || []).filter((t) => t.parent_id === task.id);
@@ -424,6 +428,8 @@ async function openDetail(id) {
   if (location.hash.slice(1) !== t.id) location.hash = t.id;
 
   renderPreview();
+  renderGotchas(data);
+  renderAttempts(data);
   renderSubtasks(data);
   renderAttachments(data);
   renderCommits(data);
@@ -443,6 +449,43 @@ function renderPreview() {
   const text = $('#d-desc').value;
   box.innerHTML = renderMarkdown(text);
   box.hidden = !$('#d-preview-toggle').dataset.on;
+}
+
+/* грабли и неудачные пути: свои поля карточки, описание их не трогает */
+const NOTES_LIMIT = 20;   // показываю последние N, дальше — свёртка
+
+function renderNotes(listSel, countSel, items, renderItem) {
+  const list = $(listSel);
+  $(countSel).textContent = items.length ? `${items.length}` : '';
+  if (!items.length) {
+    list.innerHTML = '<li class="att-size">пусто</li>';
+    return;
+  }
+  const shown = items.slice(-NOTES_LIMIT);
+  list.innerHTML = shown.map(renderItem).join('') +
+    (items.length > shown.length
+      ? `<li class="att-size">…и ещё ${items.length - shown.length} — показаны последние ${NOTES_LIMIT}</li>`
+      : '');
+}
+
+function renderGotchas(data) {
+  const items = data.task.gotchas || [];
+  renderNotes('#d-gotchas', '#d-gotchacount', items, (g) => `<li><div class="row">
+    <span>${g.flag ? `<span class="chip flag-chip">#${esc(g.flag)}</span> ` : ''}${esc(g.text)}
+      <br><span class="meta">${esc(String(g.at || '').slice(0, 19).replace('T', ' '))}${
+        g.commit ? ` · ${esc(g.commit)}` : ''}${g.source ? ` · ${esc(g.source)}` : ''}</span></span>
+  </div></li>`);
+}
+
+function renderAttempts(data) {
+  const items = data.task.attempts || [];
+  renderNotes('#d-attempts', '#d-attemptcount', items, (a) => `<li><div class="row">
+    <span>${esc(a.text)}
+      ${a.why ? `<br><span class="meta">почему: ${esc(a.why)}</span>` : ''}
+      ${a.tried ? `<br><span class="meta">пробовали: ${esc(a.tried)}</span>` : ''}
+      ${(a.tags || []).length ? `<br>${a.tags.map((t) => `<span class="chip">#${esc(t)}</span>`).join(' ')}` : ''}
+      <br><span class="meta">${esc(String(a.at || '').slice(0, 19).replace('T', ' '))}</span></span>
+  </div></li>`);
 }
 
 function renderSubtasks(data) {
