@@ -1056,7 +1056,14 @@
       "updated_at": "2026-10-17T14:27:50+00:00"
     },
     {
-      "attachments": [],
+      "attachments": [
+        {
+          "added_at": "2026-10-21T14:09:41+00:00",
+          "name": "FB-903-after.png",
+          "path": "attachments/FB-903/FB-903-after.png",
+          "size": 151147
+        }
+      ],
       "closed_at": null,
       "column_id": "backlog",
       "created_at": "2026-10-21T13:44:26+00:00",
@@ -1067,6 +1074,11 @@
           "at": "2026-10-21T13:44:26+00:00",
           "kind": "created",
           "payload": "из «Бэклог»"
+        },
+        {
+          "at": "2026-10-21T14:09:41+00:00",
+          "kind": "attach",
+          "payload": "FB-903-after.png"
         }
       ],
       "gotchas": [
@@ -1083,7 +1095,7 @@
       "parent_id": null,
       "session_label": null,
       "title": "Автопарсинг флагов из коммитов: доска сама пишет грабли в карточку",
-      "updated_at": "2026-10-21T14:06:40+00:00"
+      "updated_at": "2026-10-21T14:09:41+00:00"
     },
     {
       "attachments": [
