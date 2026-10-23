@@ -151,6 +151,7 @@ class Handler(BaseHTTPRequestHandler):
         if length <= 0:
             return {}
         raw = self.rfile.read(length)
+        self._body_read += len(raw)
         try:
             return json.loads(raw.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -161,7 +162,24 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         if length > limit:
             raise ApiError(413, f"файл больше лимита {limit // (1024 * 1024)} МБ")
-        return self.rfile.read(length) if length else b""
+        raw = self.rfile.read(length) if length else b""
+        self._body_read += len(raw)
+        return raw
+
+    def _drain_body(self) -> None:
+        """Дочитать тело, которое обработчик не тронул.
+
+        Иначе на keep-alive соединении остаток тела («{}» от POST /sync)
+        прилипает к следующему запросу: сервер читает метод «{}DELETE» и
+        отвечает 501 там, где всё должно работать. Кусака, которой не место
+        в сокете (FB-908). Читаем кусками: тело может быть большим.
+        """
+        left = int(self.headers.get("Content-Length") or 0) - self._body_read
+        while left > 0:
+            chunk = self.rfile.read(min(left, 65536))
+            if not chunk:
+                break
+            left -= len(chunk)
 
     # ---- маршрутизация --------------------------------------------------
     def do_GET(self) -> None:
@@ -186,6 +204,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
         query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
+        self._body_read = 0
         try:
             if not path.startswith("/api/"):
                 return self._serve_static(path)
@@ -210,6 +229,13 @@ class Handler(BaseHTTPRequestHandler):
             pass
         except Exception as exc:  # не роняем сервер на странном запросе
             self._error(500, f"{type(exc).__name__}: {exc}")
+        finally:
+            # тело дочитываем всегда: иначе остаток отравит следующее
+            # соединение (FB-908)
+            try:
+                self._drain_body()
+            except OSError:
+                pass
 
     # ---- статика --------------------------------------------------------
     def _serve_static(self, path: str) -> None:

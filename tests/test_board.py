@@ -1737,6 +1737,69 @@ class TestFlagParsing(TempRepoCase):
         self.assertEqual(sorted(registry), ["fix", "gotcha", "rake", "todo"])
 
 
+class TestKeepAliveBody(TestServer):
+    """FB-908: недоеденное тело POST не должно ломать следующий запрос.
+
+    Живой случай: открытие карточки шлёт POST /sync с телом «{}», обработчик
+    тело не читал, и на том же keep-alive соединении DELETE приходил серверу
+    как «{}DELETE» → 501. Кнопка «удалить» молчала.
+    """
+
+    def setUp(self):
+        super().setUp()
+        import threading
+        from http.server import ThreadingHTTPServer
+        self.Handler.default_repo = str(self.repo)
+        self.Handler.quiet = True
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), self.Handler)
+        self.port = self.httpd.server_address[1]
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.addCleanup(self.httpd.server_close)
+        self.addCleanup(self.httpd.shutdown)
+
+    def conn(self):
+        import http.client
+        return http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+
+    def test_unread_body_does_not_spoil_next_request(self):
+        task = self.new_task("Задача")
+        self.save()
+        conn = self.conn()
+        try:
+            conn.request("POST", f"/api/tasks/{task['id']}/sync", body=b"{}",
+                         headers={"Content-Type": "application/json"})
+            first = conn.getresponse()
+            first.read()
+            self.assertEqual(first.status, 201)
+            # то же соединение: если тело не дочитано, тут будет 501
+            conn.request("DELETE", f"/api/tasks/{task['id']}")
+            second = conn.getresponse()
+            body = second.read()
+            self.assertEqual(second.status, 200, body.decode("utf-8", "replace"))
+            self.assertEqual(json.loads(body)["removed"], [task["id"]])
+        finally:
+            conn.close()
+
+    def test_read_body_endpoint_still_works(self):
+        """Тело, которое обработчик прочитал сам, дочитывать повторно нельзя."""
+        task = self.new_task("Задача")
+        self.save()
+        conn = self.conn()
+        try:
+            conn.request("PATCH", f"/api/tasks/{task['id']}",
+                         body=json.dumps({"title": "новое имя"}).encode(),
+                         headers={"Content-Type": "application/json"})
+            first = conn.getresponse()
+            first.read()
+            self.assertEqual(first.status, 200)
+            conn.request("GET", f"/api/board")
+            second = conn.getresponse()
+            second.read()
+            self.assertEqual(second.status, 200)
+        finally:
+            conn.close()
+
+
 class TestSyncCommand(TempRepoCase):
     """FB-903: коммит с флагом сам попадает в карточку, повторно — без дублей."""
 

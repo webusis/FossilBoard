@@ -301,7 +301,7 @@ FossilBoard/
 │   ├── server.py             REST поверх http.server
 │   ├── cli.py                команды терминала
 │   └── web/                  index.html · app.js · style.css — без сборки
-├── tests/test_board.py       160 тестов на stdlib unittest
+├── tests/test_board.py       168 тестов на stdlib unittest
 ├── docs/                     скриншоты для README
 └── .board/                   данные этой репы (у других проектов — у них в своих)
     ├── board.json            источник правды
@@ -327,7 +327,7 @@ git -C ~/projects/k2c-proto show HEAD:.board/board.json > ~/projects/k2c-proto/.
 ## Тесты
 
 ```bash
-python3 -m unittest discover -s tests -v      # 160 тестов, ~60 с
+python3 -m unittest discover -s tests -v      # 168 тестов, ~70 с
 ```
 
 Покрыты: CRUD, запрет переиспользования ID, перемещение и прогресс саб-задач,
